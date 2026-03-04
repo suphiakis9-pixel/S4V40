@@ -12,7 +12,7 @@ from flask import Flask
 from threading import Thread
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Loglama Ayarları
+# Loglama
 logging.basicConfig(level=logging.INFO)
 
 # ==============================
@@ -26,6 +26,7 @@ def home():
 
 def run_web():
     try:
+        # Render port ayarı
         app.run(host='0.0.0.0', port=10000, threaded=True)
     except Exception as e:
         print(f"Flask Hatası: {e}")
@@ -34,7 +35,7 @@ def keep_alive():
     Thread(target=run_web, daemon=True).start()
 
 # ==============================
-# ⚙️ GÜNCEL AYARLAR (SENİN TOKEN VE KEY BİLGİLERİN)
+# ⚙️ GÜNCEL AYARLAR (YENİ TOKEN VE KEY)
 # ==============================
 API_TOKEN = "8595291883:AAF6czvMBcQRKPtb0eljwKUuoK-9zKchKwE"
 PIXELDRAIN_KEY = "ffc1f7d6-fd72-4ebf-a8d9-386c36ae4582"
@@ -57,7 +58,7 @@ YASAKLI = {
 }
 
 # ==============================
-# 🛠 GELİŞMİŞ ANALİZ FONKSİYONLARI
+# 🛠 YARDIMCI FONKSİYONLAR
 # ==============================
 def parse_number(text):
     if not text: return None
@@ -78,12 +79,10 @@ def parse_number(text):
 
 def ismi_temizle(metin):
     if not metin: return None
-    # İsim öncesi etiketleri temizle
     t = re.sub(r'(SAYIN|ALACAKLI|GÖNDEREN|ALICI|MÜŞTERİ|ÜNVANI|ALACAKLI ADI SOYADI|ADI SOYADI|ADI)\s*[:]*', '', metin.upper())
     t = CLEAN_RE.sub(' ', re.sub(r'\d+', '', t))
     p = [x for x in t.split() if x not in YASAKLI and len(x) > 1]
     
-    # Şube veya Banka ismiyse iptal et
     if any(k in t for k in ["ŞUBE", "MÜDÜRLÜĞÜ", "VALÖR", "A.Ş.", "BANKASI"]):
         return None
 
@@ -118,13 +117,11 @@ def analiz_et_v32(file_bytes):
             
             for i, l in enumerate(lns):
                 l_up = l.upper()
-                # Gönderen Bulma (SAYIN alt satır kontrolü eklendi)
                 if g == "Bilinmiyor" and "SAYIN" in l_up:
                     for offset in range(1, 3):
                         if i + offset < len(lns):
                             res = ismi_temizle(lns[i+offset])
                             if res: g = res; break
-                # Alıcı Bulma
                 if a == "Bilinmiyor" and any(k in l_up for k in ["ALICI", "LEHTAR", "ALACAKLI ADI SOYADI"]):
                     res = ismi_temizle(l)
                     if (not res) and i+1 < len(lns): 
@@ -200,3 +197,4 @@ def start_bot():
 if __name__ == "__main__":
     keep_alive()
     start_bot()
+    
