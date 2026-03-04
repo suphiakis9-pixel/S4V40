@@ -12,29 +12,21 @@ from flask import Flask
 from threading import Thread
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Loglama Ayarları
+# Loglama
 logging.basicConfig(level=logging.INFO)
 
-# ==============================
-# ⚙️ RENDER İÇİN CANLI TUTMA SİSTEMİ
-# ==============================
 app = Flask('')
-
 @app.route('/')
-def home():
-    return "Bot Aktif!"
+def home(): return "Bot Aktif!"
 
 def run_web():
-    try:
-        app.run(host='0.0.0.0', port=10000, threaded=True)
-    except Exception as e:
-        print(f"Flask Hatası: {e}")
+    app.run(host='0.0.0.0', port=10000)
 
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
 
 # ==============================
-# ⚙️ GÜNCEL AYARLAR (SENİN TOKEN VE KEY BİLGİLERİN)
+# ⚙️ AYARLAR
 # ==============================
 API_TOKEN = "8595291883:AAF6czvMBcQRKPtb0eljwKUuoK-9zKchKwE"
 PIXELDRAIN_KEY = "ffc1f7d6-fd72-4ebf-a8d9-386c36ae4582"
@@ -42,162 +34,123 @@ PIXELDRAIN_KEY = "ffc1f7d6-fd72-4ebf-a8d9-386c36ae4582"
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
 executor = ThreadPoolExecutor(max_workers=20)
 
+# Temizlik ve Filtre Listesi
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
-
 YASAKLI = {
-    "ALICI", "HESAP", "GÖNDEREN", "SAYIN", "HESABI", "ÜNVANI", "UNVANI", "LEHTAR", 
-    "MÜŞTERİ", "İSİM", "AD", "SOYAD", "TR", "AÇIKLAMA", "BİREYSEL", "ÖDEME", 
-    "MASRAF", "KOMİSYON", "ÜCRET", "VERGİ", "DAİRESİ", "NO", "TCKN", "VKN", 
-    "ADRESİ", "ŞUBE", "VADESİZ", "TUTARI", "IBAN", "KART", "PARA", "CİNSİ", 
-    "FİŞ", "BANK", "BANKASI", "A.Ş", "ELEKTRONİK", "HİZMETLERİ", "AŞ", 
-    "MÜDÜRLÜĞÜ", "FAİZ", "VERGİSİ", "ALACAKLI", "ADİ", "SOYADI", "BORÇLU", 
-    "İŞLEM", "YALNIZ", "TUTAR", "EFT", "HAVALE", "MERKEZİ", "ŞUBESİ", "ADI",
-    "İSTANBUL", "ANKARA", "İZMİR", "BURSA", "ANTALYA", "KONYA", "ADANA", 
-    "GAZİANTEP", "ŞANLIURFA", "KOCAELİ", "MERSİN", "DİYARBAKIR", "HATAY", "MARDİN"
+    "SAYIN", "ALICI", "GÖNDEREN", "MÜŞTERİ", "ÜNVANI", "ADI", "SOYADI", "İSİM", 
+    "HESAP", "TR", "IBAN", "BANK", "BANKASI", "A.Ş", "ŞUBE", "MÜDÜRLÜĞÜ", 
+    "TUTAR", "TUTARI", "TARİH", "SAAT", "İŞLEM", "NO", "AÇIKLAMA", "DEKONT",
+    "MAKBUZ", "BİREYSEL", "ÖDEME", "EFT", "HAVALE", "FAST", "TÜRKİYE", "VAKIF",
+    "ZİRAAT", "GARANTİ", "YAPI", "KREDİ", "AKBANK", "HALKBANK", "DENİZBANK",
+    "ENPARA", "QNB", "FİNANSBANK", "MAHALLESİ", "CADDE", "SOKAK", "NO", "DAİRE"
 }
 
-# ==============================
-# 🛠 GELİŞMİŞ ANALİZ FONKSİYONLARI
-# ==============================
 def parse_number(text):
     if not text: return None
-    text = re.sub(r'[^0-9,.]', '', text.replace(" ", ""))
-    if text.count(",") > 0 and text.count(".") == 0:
-        text = text.replace(",", "")
-    elif text.count(".") > 0 and text.count(",") == 0:
-        text = text.replace(".", "")
-    elif text.count(",") > 0 and text.count(".") > 0:
-        if text.find(",") < text.find("."):
-            text = text.replace(",", "")
-        else:
-            text = text.replace(".", "").replace(",", ".")
+    t = re.sub(r'[^0-9,.]', '', text.replace(" ", ""))
+    if "," in t and "." in t:
+        if t.find(",") < t.find("."): t = t.replace(",", "")
+        else: t = t.replace(".", "").replace(",", ".")
+    elif "," in t: t = t.replace(",", ".")
     try:
-        return float(text)
-    except:
-        return None
+        val = float(t)
+        return val if 1 < val < 1000000 else None
+    except: return None
 
-def ismi_temizle(metin):
-    if not metin: return None
-    # İsim öncesi etiketleri temizle
-    t = re.sub(r'(SAYIN|ALACAKLI|GÖNDEREN|ALICI|MÜŞTERİ|ÜNVANI|ALACAKLI ADI SOYADI|ADI SOYADI|ADI)\s*[:]*', '', metin.upper())
-    t = CLEAN_RE.sub(' ', re.sub(r'\d+', '', t))
-    p = [x for x in t.split() if x not in YASAKLI and len(x) > 1]
+def isim_ayikla(line):
+    if not line: return None
+    line = line.upper()
+    # Adres veya Şube içeren satırları direkt ele
+    if any(x in line for x in ["MAH.", "CAD.", "SOK.", "ŞUBESİ", "MÜDÜRLÜĞÜ", "A.Ş."]):
+        return None
+        
+    t = re.sub(r'(SAYIN|ADI SOYADI|ALICI|GÖNDEREN|ÜNVANI|MÜŞTERİ|ADI)\s*[:]*', '', line)
+    t = CLEAN_RE.sub(' ', t).strip()
+    parcalar = [p for p in t.split() if p not in YASAKLI and len(p) > 1]
     
-    # Şube veya Banka ismiyse iptal et
-    if any(k in t for k in ["ŞUBE", "MÜDÜRLÜĞÜ", "VALÖR", "A.Ş.", "BANKASI"]):
-        return None
-
-    if len(p) >= 2:
-        return " ".join(p[:3])
+    if 2 <= len(parcalar) <= 4:
+        return " ".join(parcalar)
     return None
 
-def tutar_bul_final(full_text):
-    patterns = [
-        r'(?:TL|TUTARI|TUTAR|Tutar)\s*[:]*\s*([\d.,]{4,20})',
-        r'B\s+TL\s+([\d.,]{4,20})',
-        r'Havale Tutarı\s*:\s*([\d.,]{4,20})'
-    ]
-    for pattern in patterns:
-        matches = re.findall(pattern, full_text, re.IGNORECASE)
-        for m in matches:
-            val = parse_number(m)
-            if val and 5 < val < 5000000:
-                return "{:,.2f}".format(val).replace(',', 'X').replace('.', ',').replace('X', '.') + " TRY"
-    return "Bulunamadı"
-
-def analiz_et_v32(file_bytes):
+def analiz_v4(file_bytes):
     try:
         with io.BytesIO(file_bytes) as pdf_stream:
             pdf = pypdf.PdfReader(pdf_stream)
-            txt = ""
+            text = ""
             for page in pdf.pages:
-                txt += page.extract_text() + "\n"
+                text += page.extract_text() + "\n"
             
-            lns = [l.strip() for l in txt.split('\n') if l.strip()]
-            g, a = "Bilinmiyor", "Bilinmiyor"
+            lines = [l.strip() for l in text.split('\n') if len(l.strip()) > 3]
+            g, a, t = "Bilinmiyor", "Bilinmiyor", "Bulunamadı"
             
-            for i, l in enumerate(lns):
-                l_up = l.upper()
-                # Gönderen Bulma (SAYIN alt satır kontrolü eklendi)
-                if g == "Bilinmiyor" and "SAYIN" in l_up:
-                    for offset in range(1, 3):
-                        if i + offset < len(lns):
-                            res = ismi_temizle(lns[i+offset])
-                            if res: g = res; break
-                # Alıcı Bulma
-                if a == "Bilinmiyor" and any(k in l_up for k in ["ALICI", "LEHTAR", "ALACAKLI ADI SOYADI"]):
-                    res = ismi_temizle(l)
-                    if (not res) and i+1 < len(lns): 
-                        res = ismi_temizle(lns[i+1])
-                    if res: a = res
-            return g, a, tutar_bul_final(txt)
-    except: return "Hata", "Hata", "Bulunamadı"
+            # Tutar Bulma
+            tutar_match = re.findall(r'(?:TUTAR|TL|TOPLAM)\s*[:]*\s*([\d.,]{4,20})', text.upper())
+            for m in tutar_match:
+                val = parse_number(m)
+                if val:
+                    t = "{:,.2f} TRY".format(val).replace(",", "X").replace(".", ",").replace("X", ".")
+                    break
+
+            # İsim Bulma (Daha agresif tarama)
+            for i, line in enumerate(lines):
+                up = line.upper()
+                # Gönderen için SAYIN veya GÖNDEREN anahtar kelimeleri
+                if g == "Bilinmiyor":
+                    if "SAYIN" in up or "GÖNDEREN" in up:
+                        # Satırın kendisinde veya sonraki 2 satırda isim ara
+                        for offset in range(0, 3):
+                            if i + offset < len(lines):
+                                res = isim_ayikla(lines[i+offset])
+                                if res: g = res; break
+
+                # Alıcı için ALICI veya LEHTAR anahtar kelimeleri
+                if a == "Bilinmiyor":
+                    if any(x in up for x in ["ALICI", "LEHTAR", "IBAN"]):
+                        for offset in range(0, 2):
+                            if i + offset < len(lines):
+                                res = isim_ayikla(lines[i+offset])
+                                if res: a = res; break
+            
+            return g, a, t
+    except Exception as e:
+        return "Hata", "Hata", "Bulunamadı"
 
 def pixeldrain_yukle(raw_file):
     try:
-        unique_name = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
+        name = f"dk_{int(time.time())}.pdf"
         res = requests.post("https://pixeldrain.com/api/file", 
-                             files={'file': (unique_name, raw_file)}, 
-                             auth=HTTPBasicAuth('', PIXELDRAIN_KEY), timeout=25)
-        if res.status_code in [200, 201]:
-            return f"https://pixeldrain.com/u/{res.json().get('id')}"
-        return "⚠️ Hata"
+                             files={'file': (name, raw_file)}, 
+                             auth=HTTPBasicAuth('', PIXELDRAIN_KEY), timeout=20)
+        return f"https://pixeldrain.com/u/{res.json().get('id')}" if res.status_code < 300 else "⚠️ Hata"
     except: return "⚠️ Hata"
 
-# ==============================
-# 🤖 BOT MESAJ YÖNETİMİ
-# ==============================
 @bot.message_handler(content_types=['photo', 'document'])
-def handle_incoming(message):
+def handle(message):
     try:
-        if int(time.time()) - message.date > 120:
-            return
-
-        waiting_msg = bot.reply_to(message, "⏳ **İnceleniyor...**", parse_mode="Markdown")
+        if int(time.time()) - message.date > 60: return
         
-        file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
-        is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
+        waiting = bot.reply_to(message, "⏳ **İşleniyor...**", parse_mode="Markdown")
+        fid = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
+        finfo = bot.get_file(fid)
+        raw = bot.download_file(finfo.file_path)
         
-        file_info = bot.get_file(file_id)
-        current_raw_file = bot.download_file(file_info.file_path)
-        fut_link = executor.submit(pixeldrain_yukle, current_raw_file)
+        link_task = executor.submit(pixeldrain_yukle, raw)
         
-        if is_pdf:
-            gonderen, alici, tutar = analiz_et_v32(current_raw_file)
-            link = fut_link.result()
-            msg = (
-                "🏦 **ONAY ✅**\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 **G:** `{gonderen}`\n"
-                f"👤 **A:** `{alici}`\n"
-                f"💰 **T:** `{tutar}`\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📋 **Kopyala:** `{link}`"
-            )
+        if message.content_type == 'document' and message.document.file_name.lower().endswith('.pdf'):
+            g, a, t = analiz_v4(raw)
+            link = link_task.result()
+            msg = f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━\n👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n━━━━━━━━━━━━━━\n📋 `{link}`"
         else:
-            link = fut_link.result()
-            msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link}`"
+            link = link_task.result()
+            msg = f"📸 **Link:** `{link}`"
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🌍 Görüntüle", url=link))
-        bot.edit_message_text(msg, chat_id=message.chat.id, message_id=waiting_msg.message_id, 
-                              parse_mode="Markdown", disable_web_page_preview=True, reply_markup=markup)
-        del current_raw_file
-    except Exception as e:
-        logging.error(f"Hata: {e}")
-
-# ==============================
-# 🚀 BAŞLATMA
-# ==============================
-def start_bot():
-    while True:
-        try:
-            bot.remove_webhook()
-            bot.infinity_polling(timeout=90, long_polling_timeout=90, skip_pending=True)
-        except:
-            time.sleep(5)
+        bot.edit_message_text(msg, chat_id=message.chat.id, message_id=waiting.message_id, 
+                              parse_mode="Markdown", reply_markup=markup)
+    except: pass
 
 if __name__ == "__main__":
     keep_alive()
-    start_bot()
-            
+    bot.infinity_polling(skip_pending=True)
+        
