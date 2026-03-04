@@ -16,7 +16,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 logging.basicConfig(level=logging.INFO)
 
 # ==============================
-# ⚙️ RENDER İÇİN CANLI TUTMA SİSTEMİ
+# ⚙️ CANLI TUTMA SİSTEMİ
 # ==============================
 app = Flask('')
 
@@ -26,19 +26,19 @@ def home():
 
 def run_web():
     try:
-        # Render port ayarı
+        # Render için standart port 10000'dir
         app.run(host='0.0.0.0', port=10000, threaded=True)
     except Exception as e:
-        print(f"Flask Hatası: {e}")
+        logging.error(f"Flask Hatası: {e}")
 
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
 
 # ==============================
-# ⚙️ GÜNCEL AYARLAR (YENİ TOKEN VE KEY)
+# ⚙️ YENİ AYARLAR VE YAPILANDIRMA
 # ==============================
-API_TOKEN = "8595291883:AAF6czvMBcQRKPtb0eljwKUuoK-9zKchKwE"
-PIXELDRAIN_KEY = "ffc1f7d6-fd72-4ebf-a8d9-386c36ae4582"
+API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
+PIXELDRAIN_KEY = "a0f583ba-56b1-429e-aa04-a4908f24c81a"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
 executor = ThreadPoolExecutor(max_workers=20)
@@ -82,10 +82,8 @@ def ismi_temizle(metin):
     t = re.sub(r'(SAYIN|ALACAKLI|GÖNDEREN|ALICI|MÜŞTERİ|ÜNVANI|ALACAKLI ADI SOYADI|ADI SOYADI|ADI)\s*[:]*', '', metin.upper())
     t = CLEAN_RE.sub(' ', re.sub(r'\d+', '', t))
     p = [x for x in t.split() if x not in YASAKLI and len(x) > 1]
-    
     if any(k in t for k in ["ŞUBE", "MÜDÜRLÜĞÜ", "VALÖR", "A.Ş.", "BANKASI"]):
         return None
-
     if len(p) >= 2:
         return " ".join(p[:3])
     return None
@@ -121,7 +119,9 @@ def analiz_et_v32(file_bytes):
                     for offset in range(1, 3):
                         if i + offset < len(lns):
                             res = ismi_temizle(lns[i+offset])
-                            if res: g = res; break
+                            if res:
+                                g = res
+                                break
                 if a == "Bilinmiyor" and any(k in l_up for k in ["ALICI", "LEHTAR", "ALACAKLI ADI SOYADI"]):
                     res = ismi_temizle(l)
                     if (not res) and i+1 < len(lns): 
@@ -132,14 +132,15 @@ def analiz_et_v32(file_bytes):
 
 def pixeldrain_yukle(raw_file):
     try:
-        unique_name = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
+        unique_filename = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
         res = requests.post("https://pixeldrain.com/api/file", 
-                             files={'file': (unique_name, raw_file)}, 
+                             files={'file': (unique_filename, raw_file)}, 
                              auth=HTTPBasicAuth('', PIXELDRAIN_KEY), timeout=25)
         if res.status_code in [200, 201]:
             return f"https://pixeldrain.com/u/{res.json().get('id')}"
-        return "⚠️ Hata"
-    except: return "⚠️ Hata"
+        return "⚠️ Yükleme Hatası"
+    except Exception:
+        return "⚠️ Bağlantı Hatası"
 
 # ==============================
 # 🤖 BOT MESAJ YÖNETİMİ
@@ -157,6 +158,7 @@ def handle_incoming(message):
         
         file_info = bot.get_file(file_id)
         current_raw_file = bot.download_file(file_info.file_path)
+        
         fut_link = executor.submit(pixeldrain_yukle, current_raw_file)
         
         if is_pdf:
@@ -177,11 +179,14 @@ def handle_incoming(message):
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🌍 Görüntüle", url=link))
+        
         bot.edit_message_text(msg, chat_id=message.chat.id, message_id=waiting_msg.message_id, 
                               parse_mode="Markdown", disable_web_page_preview=True, reply_markup=markup)
+        
         del current_raw_file
+        
     except Exception as e:
-        logging.error(f"Hata: {e}")
+        logging.error(f"İşlem Hatası: {e}")
 
 # ==============================
 # 🚀 BAŞLATMA
