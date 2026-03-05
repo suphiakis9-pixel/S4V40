@@ -16,18 +16,18 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 logging.basicConfig(level=logging.INFO)
 
 # ==============================
-# ⚙️ RENDER CANLI TUTMA SİSTEMİ
+# ⚙️ RENDER İÇİN CANLI TUTMA SİSTEMİ
 # ==============================
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot Aktif!"
+    return "Bot Aktif ve Sorunsuz Çalışıyor!"
 
 def run_web():
     try:
-        # Render'ın beklediği standart port
-        app.run(host='0.0.0.0', port=10000, threaded=True)
+        # Render ücretsiz paket için en stabil port 10000'dir
+        app.run(host='0.0.0.0', port=10000)
     except Exception as e:
         print(f"Flask Hatası: {e}")
 
@@ -37,16 +37,17 @@ def keep_alive():
 # ==============================
 # ⚙️ SENİN GÜNCEL BİLGİLERİN
 # ==============================
-API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
-PIXELDRAIN_KEY = "a0f583ba-56b1-429e-aa04-a4908f24c81a"
+API_TOKEN = "8595291883:AAF6czvMBcQRKPtb0eljwKUuoK-9zKchKwE"
+PIXELDRAIN_KEY = "ffc1f7d6-fd72-4ebf-a8d9-386c36ae4582"
 
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
-executor = ThreadPoolExecutor(max_workers=20)
+# Threaded=False yaparak Render üzerindeki kilitlenmeleri önlüyoruz
+bot = telebot.TeleBot(API_TOKEN, threaded=False)
+executor = ThreadPoolExecutor(max_workers=10)
 
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 
 YASAKLI = {
-    "ALICI", "HESAP", "GÖNDEREN", "SAYIN", "HESABI", "ÜNVANI", "UNVANI", "LEHTAR", 
+    "ALICI", "HESAP", "GÖNDEREN", "SAYIN", "HESABI", "ÜNVANI", "LEHTAR", 
     "MÜŞTERİ", "İSİM", "AD", "SOYAD", "TR", "AÇIKLAMA", "BİREYSEL", "ÖDEME", 
     "MASRAF", "KOMİSYON", "ÜCRET", "VERGİ", "DAİRESİ", "NO", "TCKN", "VKN", 
     "ADRESİ", "ŞUBE", "VADESİZ", "TUTARI", "IBAN", "KART", "PARA", "CİNSİ", 
@@ -58,7 +59,7 @@ YASAKLI = {
 }
 
 # ==============================
-# 🛠 YARDIMCI FONKSİYONLAR
+# 🛠 ANALİZ FONKSİYONLARI
 # ==============================
 def parse_number(text):
     if not text: return None
@@ -82,7 +83,7 @@ def ismi_temizle(metin):
     t = re.sub(r'(SAYIN|ALACAKLI|GÖNDEREN|ALICI|MÜŞTERİ|ÜNVANI|ALACAKLI ADI SOYADI|ADI SOYADI|ADI)\s*[:]*', '', metin.upper())
     t = CLEAN_RE.sub(' ', re.sub(r'\d+', '', t))
     p = [x for x in t.split() if x not in YASAKLI and len(x) > 1]
-    if any(k in t for k in ["ŞUBE", "MÜDÜRLÜĞÜ", "VALÖR", "A.Ş.", "BANKASI"]):
+    if any(k in t for k in ["ŞUBE", "MÜDÜRLÜĞÜ", "VALÖR", "A.Ş.", "BANKASI", "CADDE", "SOKAK"]):
         return None
     if len(p) >= 2:
         return " ".join(p[:3])
@@ -148,7 +149,7 @@ def handle_incoming(message):
         if int(time.time()) - message.date > 120:
             return
 
-        waiting_msg = bot.reply_to(message, "⏳ **İnceleniyor...**", parse_mode="Markdown")
+        waiting_msg = bot.reply_to(message, "⏳ **İşleniyor...**", parse_mode="Markdown")
         
         file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
         is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
@@ -167,7 +168,7 @@ def handle_incoming(message):
                 f"👤 **A:** `{alici}`\n"
                 f"💰 **T:** `{tutar}`\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📋 **Kopyala:** `{link}`"
+                f"📋 **Link:** `{link}`"
             )
         else:
             link = fut_link.result()
@@ -184,14 +185,7 @@ def handle_incoming(message):
 # ==============================
 # 🚀 BAŞLATMA
 # ==============================
-def start_bot():
-    while True:
-        try:
-            bot.remove_webhook()
-            bot.infinity_polling(timeout=90, long_polling_timeout=90, skip_pending=True)
-        except:
-            time.sleep(5)
-
 if __name__ == "__main__":
-    keep_alive()
-    start_bot()
+    keep_alive() # Web sunucusunu başlat (Render için)
+    print("Bot başlatılıyor...")
+    bot.infinity_polling(skip_pending=True)
