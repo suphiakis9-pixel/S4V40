@@ -12,11 +12,11 @@ from flask import Flask
 from threading import Thread
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Loglama
+# Loglama Ayarları
 logging.basicConfig(level=logging.INFO)
 
 # ==============================
-# ⚙️ CANLI TUTMA SİSTEMİ
+# ⚙️ RENDER CANLI TUTMA SİSTEMİ
 # ==============================
 app = Flask('')
 
@@ -26,16 +26,16 @@ def home():
 
 def run_web():
     try:
-        # Render için standart port 10000'dir
+        # Render'ın beklediği standart port
         app.run(host='0.0.0.0', port=10000, threaded=True)
     except Exception as e:
-        logging.error(f"Flask Hatası: {e}")
+        print(f"Flask Hatası: {e}")
 
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
 
 # ==============================
-# ⚙️ YENİ AYARLAR VE YAPILANDIRMA
+# ⚙️ SENİN GÜNCEL BİLGİLERİN
 # ==============================
 API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
 PIXELDRAIN_KEY = "a0f583ba-56b1-429e-aa04-a4908f24c81a"
@@ -119,9 +119,7 @@ def analiz_et_v32(file_bytes):
                     for offset in range(1, 3):
                         if i + offset < len(lns):
                             res = ismi_temizle(lns[i+offset])
-                            if res:
-                                g = res
-                                break
+                            if res: g = res; break
                 if a == "Bilinmiyor" and any(k in l_up for k in ["ALICI", "LEHTAR", "ALACAKLI ADI SOYADI"]):
                     res = ismi_temizle(l)
                     if (not res) and i+1 < len(lns): 
@@ -132,15 +130,14 @@ def analiz_et_v32(file_bytes):
 
 def pixeldrain_yukle(raw_file):
     try:
-        unique_filename = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
+        unique_name = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
         res = requests.post("https://pixeldrain.com/api/file", 
-                             files={'file': (unique_filename, raw_file)}, 
+                             files={'file': (unique_name, raw_file)}, 
                              auth=HTTPBasicAuth('', PIXELDRAIN_KEY), timeout=25)
         if res.status_code in [200, 201]:
             return f"https://pixeldrain.com/u/{res.json().get('id')}"
-        return "⚠️ Yükleme Hatası"
-    except Exception:
-        return "⚠️ Bağlantı Hatası"
+        return "⚠️ Hata"
+    except: return "⚠️ Hata"
 
 # ==============================
 # 🤖 BOT MESAJ YÖNETİMİ
@@ -158,7 +155,6 @@ def handle_incoming(message):
         
         file_info = bot.get_file(file_id)
         current_raw_file = bot.download_file(file_info.file_path)
-        
         fut_link = executor.submit(pixeldrain_yukle, current_raw_file)
         
         if is_pdf:
@@ -179,14 +175,11 @@ def handle_incoming(message):
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🌍 Görüntüle", url=link))
-        
         bot.edit_message_text(msg, chat_id=message.chat.id, message_id=waiting_msg.message_id, 
                               parse_mode="Markdown", disable_web_page_preview=True, reply_markup=markup)
-        
         del current_raw_file
-        
     except Exception as e:
-        logging.error(f"İşlem Hatası: {e}")
+        logging.error(f"Hata: {e}")
 
 # ==============================
 # 🚀 BAŞLATMA
@@ -202,4 +195,4 @@ def start_bot():
 if __name__ == "__main__":
     keep_alive()
     start_bot()
-
+    
