@@ -12,42 +12,51 @@ from flask import Flask
 from threading import Thread
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Loglama Ayarları
+# Loglama
 logging.basicConfig(level=logging.INFO)
 
 # ==============================
-# ⚙️ RENDER İÇİN CANLI TUTMA SİSTEMİ
+# ⚙️ CANLI TUTMA VE SELF-PING SİSTEMİ
 # ==============================
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot Aktif ve Sorunsuz Çalışıyor!"
+    return "Bot Aktif!"
 
 def run_web():
     try:
-        # Render ücretsiz paket için en stabil port 10000'dir
-        app.run(host='0.0.0.0', port=10000)
+        app.run(host='0.0.0.0', port=5000, threaded=True)
     except Exception as e:
         print(f"Flask Hatası: {e}")
 
+def self_ping():
+    time.sleep(15)
+    while True:
+        try:
+            requests.get("http://127.0.0.1:5000/", timeout=10)
+            print("⚓ Self-Ping: Sistem uyanık tutuluyor...")
+        except:
+            pass
+        time.sleep(300)
+
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
+    Thread(target=self_ping, daemon=True).start()
 
 # ==============================
-# ⚙️ SENİN GÜNCEL BİLGİLERİN
+# ⚙️ AYARLAR VE YAPILANDIRMA (YENİ KEYLER EKLENDİ)
 # ==============================
 API_TOKEN = "8595291883:AAF6czvMBcQRKPtb0eljwKUuoK-9zKchKwE"
 PIXELDRAIN_KEY = "ffc1f7d6-fd72-4ebf-a8d9-386c36ae4582"
 
-# Threaded=False yaparak Render üzerindeki kilitlenmeleri önlüyoruz
-bot = telebot.TeleBot(API_TOKEN, threaded=False)
-executor = ThreadPoolExecutor(max_workers=10)
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
+executor = ThreadPoolExecutor(max_workers=20)
 
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 
 YASAKLI = {
-    "ALICI", "HESAP", "GÖNDEREN", "SAYIN", "HESABI", "ÜNVANI", "LEHTAR", 
+    "ALICI", "HESAP", "GÖNDEREN", "SAYIN", "HESABI", "ÜNVANI", "UNVANI", "LEHTAR", 
     "MÜŞTERİ", "İSİM", "AD", "SOYAD", "TR", "AÇIKLAMA", "BİREYSEL", "ÖDEME", 
     "MASRAF", "KOMİSYON", "ÜCRET", "VERGİ", "DAİRESİ", "NO", "TCKN", "VKN", 
     "ADRESİ", "ŞUBE", "VADESİZ", "TUTARI", "IBAN", "KART", "PARA", "CİNSİ", 
@@ -59,7 +68,7 @@ YASAKLI = {
 }
 
 # ==============================
-# 🛠 ANALİZ FONKSİYONLARI
+# 🛠 YARDIMCI FONKSİYONLAR
 # ==============================
 def parse_number(text):
     if not text: return None
@@ -80,10 +89,10 @@ def parse_number(text):
 
 def ismi_temizle(metin):
     if not metin: return None
-    t = re.sub(r'(SAYIN|ALACAKLI|GÖNDEREN|ALICI|MÜŞTERİ|ÜNVANI|ALACAKLI ADI SOYADI|ADI SOYADI|ADI)\s*[:]*', '', metin.upper())
+    t = re.sub(r'(SAYIN|ALACAKLI|GÖNDEREN|ALICI|MÜŞTERİ|ÜNVANI|ALACAKLI ADI SOYADI|ADI SOYADI|AD SOYAD|ADI)\s*[:]*', '', metin.upper())
     t = CLEAN_RE.sub(' ', re.sub(r'\d+', '', t))
     p = [x for x in t.split() if x not in YASAKLI and len(x) > 1]
-    if any(k in t for k in ["ŞUBE", "MÜDÜRLÜĞÜ", "VALÖR", "A.Ş.", "BANKASI", "CADDE", "SOKAK"]):
+    if any(k in t for k in ["ŞUBE", "MÜDÜRLÜĞÜ", "VALÖR", "A.Ş.", "BANKASI"]):
         return None
     if len(p) >= 2:
         return " ".join(p[:3])
@@ -92,7 +101,8 @@ def ismi_temizle(metin):
 def tutar_bul_final(full_text):
     patterns = [
         r'(?:TL|TUTARI|TUTAR|Tutar)\s*[:]*\s*([\d.,]{4,20})',
-        r'B\s+TL\s+([\d.,]{4,20})',
+        r'B\s+TL\s+([\d.,]{4,20})', 
+        r'İŞLEM TUTARI\s*\(TL\)\s*:\s*([\d.,]{4,20})',
         r'Havale Tutarı\s*:\s*([\d.,]{4,20})'
     ]
     for pattern in patterns:
@@ -116,12 +126,13 @@ def analiz_et_v32(file_bytes):
             
             for i, l in enumerate(lns):
                 l_up = l.upper()
-                if g == "Bilinmiyor" and "SAYIN" in l_up:
-                    for offset in range(1, 3):
-                        if i + offset < len(lns):
-                            res = ismi_temizle(lns[i+offset])
-                            if res: g = res; break
-                if a == "Bilinmiyor" and any(k in l_up for k in ["ALICI", "LEHTAR", "ALACAKLI ADI SOYADI"]):
+                if any(k in l_up for k in ["SAYIN", "GÖNDEREN", "AD SOYAD"]) and g == "Bilinmiyor":
+                    res = ismi_temizle(l) 
+                    if not res and i+1 < len(lns): 
+                        res = ismi_temizle(lns[i+1]) 
+                    if res: g = res
+                
+                if any(k in l_up for k in ["ALICI", "LEHTAR", "ALACAKLI ADI SOYADI"]) and a == "Bilinmiyor":
                     res = ismi_temizle(l)
                     if (not res) and i+1 < len(lns): 
                         res = ismi_temizle(lns[i+1])
@@ -131,14 +142,15 @@ def analiz_et_v32(file_bytes):
 
 def pixeldrain_yukle(raw_file):
     try:
-        unique_name = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
+        unique_filename = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
         res = requests.post("https://pixeldrain.com/api/file", 
-                             files={'file': (unique_name, raw_file)}, 
+                             files={'file': (unique_filename, raw_file)}, 
                              auth=HTTPBasicAuth('', PIXELDRAIN_KEY), timeout=25)
         if res.status_code in [200, 201]:
             return f"https://pixeldrain.com/u/{res.json().get('id')}"
-        return "⚠️ Hata"
-    except: return "⚠️ Hata"
+        return "⚠️ Yükleme Hatası"
+    except Exception as e:
+        return f"⚠️ Bağlantı Hatası"
 
 # ==============================
 # 🤖 BOT MESAJ YÖNETİMİ
@@ -149,13 +161,14 @@ def handle_incoming(message):
         if int(time.time()) - message.date > 120:
             return
 
-        waiting_msg = bot.reply_to(message, "⏳ **İşleniyor...**", parse_mode="Markdown")
+        waiting_msg = bot.reply_to(message, "⏳ **İnceleniyor...**", parse_mode="Markdown")
         
         file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
         is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
         
         file_info = bot.get_file(file_id)
         current_raw_file = bot.download_file(file_info.file_path)
+        
         fut_link = executor.submit(pixeldrain_yukle, current_raw_file)
         
         if is_pdf:
@@ -168,7 +181,7 @@ def handle_incoming(message):
                 f"👤 **A:** `{alici}`\n"
                 f"💰 **T:** `{tutar}`\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📋 **Link:** `{link}`"
+                f"📋 **Kopyala:** `{link}`"
             )
         else:
             link = fut_link.result()
@@ -176,16 +189,26 @@ def handle_incoming(message):
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🌍 Görüntüle", url=link))
+        
         bot.edit_message_text(msg, chat_id=message.chat.id, message_id=waiting_msg.message_id, 
                               parse_mode="Markdown", disable_web_page_preview=True, reply_markup=markup)
+        
         del current_raw_file
+        
     except Exception as e:
-        logging.error(f"Hata: {e}")
+        print(f"İşlem Sırasında Hata: {e}")
 
 # ==============================
-# 🚀 BAŞLATMA
+# 🚀 BAŞLATMA DÖNGÜSÜ
 # ==============================
+def start_bot():
+    while True:
+        try:
+            bot.remove_webhook()
+            bot.infinity_polling(timeout=90, long_polling_timeout=90, skip_pending=True)
+        except:
+            time.sleep(5)
+
 if __name__ == "__main__":
-    keep_alive() # Web sunucusunu başlat (Render için)
-    print("Bot başlatılıyor...")
-    bot.infinity_polling(skip_pending=True)
+    keep_alive()
+    start_bot()
