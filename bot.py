@@ -45,10 +45,10 @@ def keep_alive():
     Thread(target=self_ping, daemon=True).start()
 
 # ==============================
-# ⚙️ AYARLAR VE YAPILANDIRMA (YENİ KEY EKLENDİ)
+# ⚙️ AYARLAR VE YAPILANDIRMA
 # ==============================
+# Senin yeni Tokenin
 API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
-PIXELDRAIN_KEY = "8e258cec-7a6e-4328-abcd-82096e5ab2f3"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=10)
 executor = ThreadPoolExecutor(max_workers=5)
@@ -140,14 +140,21 @@ def analiz_et_v32(file_bytes):
             return g, a, tutar_bul_final(txt)
     except: return "Hata", "Hata", "Bulunamadı"
 
-def pixeldrain_yukle(raw_file):
+# PIXELDRAIN YERİNE CATBOX KULLANIYORUZ (ENGELLEMEYİ AŞMAK İÇİN)
+def catbox_yukle(raw_file):
     try:
-        unique_filename = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
-        res = requests.post("https://pixeldrain.com/api/file", 
-                             files={'file': (unique_filename, raw_file)}, 
-                             auth=HTTPBasicAuth('', PIXELDRAIN_KEY), timeout=35)
-        if res.status_code in [200, 201]:
-            return f"https://pixeldrain.com/u/{res.json().get('id')}"
+        # Rastgele dosya adı oluştur
+        file_ext = ".pdf" # Varsayılan pdf, görsel olsa da sorun olmaz
+        unique_filename = f"dk_{int(time.time())}{file_ext}"
+        
+        # Catbox API isteği
+        files = {'fileToUpload': (unique_filename, raw_file)}
+        data = {'reqtype': 'fileupload'}
+        
+        res = requests.post("https://catbox.moe/user/api.php", files=files, data=data, timeout=35)
+        
+        if res.status_code == 200 and res.text.startswith("https://"):
+            return res.text.strip() # Yüklenen dosyanın URL'sini döndürür
         return "ERROR"
     except:
         return "ERROR"
@@ -174,13 +181,14 @@ def handle_incoming(message):
         file_info = bot.get_file(file_id)
         current_raw_file = bot.download_file(file_info.file_path)
         
-        link = pixeldrain_yukle(current_raw_file)
+        # ARTIK CATBOX'A YÜKLÜYORUZ
+        link = catbox_yukle(current_raw_file)
         
         if link != "ERROR":
             link_text = f"`{link}`"
             show_button = True
         else:
-            link_text = "⚠️ *Yükleme başarısız (Sunucu yoğun)*"
+            link_text = "⚠️ *Yükleme başarısız (Sunucu engeli)*"
             show_button = False
         
         if is_pdf:
@@ -208,7 +216,7 @@ def handle_incoming(message):
         if waiting_msg:
             bot.edit_message_text(f"❌ İşlem hatası oluştu.", chat_id=message.chat.id, message_id=waiting_msg.message_id)
 
-def start_bot():
+def start_botu():
     while True:
         try:
             bot.remove_webhook()
@@ -218,4 +226,4 @@ def start_bot():
 
 if __name__ == "__main__":
     keep_alive()
-    start_bot()
+    start_botu()
