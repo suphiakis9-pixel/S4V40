@@ -12,10 +12,11 @@ from flask import Flask
 from threading import Thread
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+# Loglama
 logging.basicConfig(level=logging.INFO)
 
 # ==============================
-# ⚙️ WEB SUNUCU VE CANLI TUTMA (DOKUNULMADI)
+# ⚙️ CANLI TUTMA VE SELF-PING SİSTEMİ
 # ==============================
 app = Flask('')
 
@@ -25,32 +26,31 @@ def home():
 
 def run_web():
     try:
-        import os
-        port = int(os.environ.get("PORT", 5000))
-        app.run(host='0.0.0.0', port=port, threaded=True)
+        app.run(host='0.0.0.0', port=5000, threaded=True)
     except Exception as e:
         print(f"Flask Hatası: {e}")
 
 def self_ping():
-    time.sleep(20)
+    time.sleep(15)
     while True:
         try:
-            requests.get("http://127.0.0.1:5000/", timeout=5)
+            requests.get("http://127.0.0.1:5000/", timeout=10)
+            print("⚓ Self-Ping: Sistem uyanık tutuluyor...")
         except:
             pass
-        time.sleep(180)
+        time.sleep(300)
 
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
     Thread(target=self_ping, daemon=True).start()
 
 # ==============================
-# ⚙️ AYARLAR (DOKUNULMADI)
+# ⚙️ AYARLAR VE YAPILANDIRMA (TOKEN GÜNCELLENDİ)
 # ==============================
 API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
 
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=10)
-executor = ThreadPoolExecutor(max_workers=5)
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
+executor = ThreadPoolExecutor(max_workers=20)
 
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 
@@ -67,24 +67,7 @@ YASAKLI = {
 }
 
 # ==============================
-# 🛠 YENİ YÜKLEME FONKSİYONU (SADECE BURASI DEĞİŞTİ)
-# ==============================
-def catbox_yukle(raw_file):
-    try:
-        # Catbox API kullanımı (Key gerektirmez)
-        unique_filename = f"dk_{int(time.time())}.pdf"
-        files = {'fileToUpload': (unique_filename, raw_file)}
-        data = {'reqtype': 'fileupload'}
-        res = requests.post("https://catbox.moe/user/api.php", files=files, data=data, timeout=35)
-        
-        if res.status_code == 200 and res.text.startswith("https://"):
-            return res.text.strip()
-        return "ERROR"
-    except:
-        return "ERROR"
-
-# ==============================
-# 🛠 ANALİZ FONKSİYONLARI (DOKUNULMADI)
+# 🛠 YARDIMCI FONKSİYONLAR
 # ==============================
 def parse_number(text):
     if not text: return None
@@ -156,40 +139,43 @@ def analiz_et_v32(file_bytes):
             return g, a, tutar_bul_final(txt)
     except: return "Hata", "Hata", "Bulunamadı"
 
+# PIXELDRAIN YERİNE CATBOX EKLENDİ
+def catbox_yukle(raw_file):
+    try:
+        unique_filename = f"dk_{int(time.time())}.pdf"
+        files = {'fileToUpload': (unique_filename, raw_file)}
+        data = {'reqtype': 'fileupload'}
+        res = requests.post("https://catbox.moe/user/api.php", files=files, data=data, timeout=35)
+        
+        if res.status_code == 200 and res.text.startswith("https://"):
+            return res.text.strip()
+        return "⚠️ Yükleme Hatası"
+    except Exception as e:
+        return f"⚠️ Bağlantı Hatası"
+
 # ==============================
-# 🤖 BOT MESAJ YÖNETİMİ (GÜNCELLENDİ)
+# 🤖 BOT MESAJ YÖNETİMİ
 # ==============================
 @bot.message_handler(content_types=['photo', 'document'])
 def handle_incoming(message):
-    waiting_msg = None
     try:
-        if int(time.time()) - message.date > 180:
+        if int(time.time()) - message.date > 120:
             return
 
         waiting_msg = bot.reply_to(message, "⏳ **İnceleniyor...**", parse_mode="Markdown")
         
-        if message.content_type == 'photo':
-            file_id = message.photo[-1].file_id
-            is_pdf = False
-        else:
-            file_id = message.document.file_id
-            is_pdf = message.document.file_name.lower().endswith(".pdf")
+        file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
+        is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
         
         file_info = bot.get_file(file_id)
         current_raw_file = bot.download_file(file_info.file_path)
         
-        # Pixeldrain yerine Catbox'a yükleme yapılıyor
-        link = catbox_yukle(current_raw_file)
-        
-        if link != "ERROR":
-            link_text = f"`{link}`"
-            show_button = True
-        else:
-            link_text = "⚠️ *Yükleme başarısız (Sunucu engeli)*"
-            show_button = False
+        # Executor ile yükleme yapılıyor
+        fut_link = executor.submit(catbox_yukle, current_raw_file)
         
         if is_pdf:
             gonderen, alici, tutar = analiz_et_v32(current_raw_file)
+            link = fut_link.result()
             msg = (
                 "🏦 **ONAY ✅**\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
@@ -197,29 +183,34 @@ def handle_incoming(message):
                 f"👤 **A:** `{alici}`\n"
                 f"💰 **T:** `{tutar}`\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📋 **Kopyala:** {link_text}"
+                f"📋 **Kopyala:** `{link}`"
             )
         else:
-            msg = f"📸 **Görsel Linki ✅**\n\n📋 {link_text}"
+            link = fut_link.result()
+            msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link}`"
 
         markup = InlineKeyboardMarkup()
-        if show_button:
+        if "https://" in link:
             markup.add(InlineKeyboardButton("🌍 Görüntüle", url=link))
         
         bot.edit_message_text(msg, chat_id=message.chat.id, message_id=waiting_msg.message_id, 
                               parse_mode="Markdown", disable_web_page_preview=True, reply_markup=markup)
         
+        del current_raw_file
+        
     except Exception as e:
-        if waiting_msg:
-            bot.edit_message_text(f"❌ İşlem hatası oluştu.", chat_id=message.chat.id, message_id=waiting_msg.message_id)
+        print(f"İşlem Sırasında Hata: {e}")
 
+# ==============================
+# 🚀 BAŞLATMA DÖNGÜSÜ
+# ==============================
 def start_bot():
     while True:
         try:
             bot.remove_webhook()
             bot.infinity_polling(timeout=90, long_polling_timeout=90, skip_pending=True)
         except:
-            time.sleep(10)
+            time.sleep(5)
 
 if __name__ == "__main__":
     keep_alive()
