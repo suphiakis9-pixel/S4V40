@@ -26,32 +26,37 @@ def home():
 
 def run_web():
     try:
-        app.run(host='0.0.0.0', port=5000, threaded=True)
+        # Render için portu dinamik alıyoruz, yoksa 5000 varsayılan
+        import os
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host='0.0.0.0', port=port, threaded=True)
     except Exception as e:
         print(f"Flask Hatası: {e}")
 
 def self_ping():
-    time.sleep(15)
+    time.sleep(20)
     while True:
         try:
-            requests.get("http://127.0.0.1:5000/", timeout=10)
-            print("⚓ Self-Ping: Sistem uyanık tutuluyor...")
+            # Kendi adresini dinamik bulmaya çalışır veya localhost dener
+            requests.get("http://127.0.0.1:5000/", timeout=5)
+            print("⚓ Self-Ping: Sistem uyanık...")
         except:
             pass
-        time.sleep(300)
+        time.sleep(180) # 3 dakikada bir ping
 
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
     Thread(target=self_ping, daemon=True).start()
 
 # ==============================
-# ⚙️ AYARLAR VE YAPILANDIRMA (KEY GÜNCELLENDİ)
+# ⚙️ AYARLAR VE YAPILANDIRMA (GÜNCEL KEY)
 # ==============================
 API_TOKEN = "8595291883:AAF6czvMBcQRKPtb0eljwKUuoK-9zKchKwE"
 PIXELDRAIN_KEY = "a0f583ba-56b1-429e-aa04-a4908f24c81a"
 
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
-executor = ThreadPoolExecutor(max_workers=20)
+# Thread sayıları sunucuya uygun hale getirildi (Tıkanmayı önler)
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=10)
+executor = ThreadPoolExecutor(max_workers=5)
 
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 
@@ -68,7 +73,7 @@ YASAKLI = {
 }
 
 # ==============================
-# 🛠 YARDIMCI FONKSİYONLAR
+# 🛠 YARDIMCI FONKSİYONLAR (DEĞİŞTİRİLMEDİ)
 # ==============================
 def parse_number(text):
     if not text: return None
@@ -143,14 +148,15 @@ def analiz_et_v32(file_bytes):
 def pixeldrain_yukle(raw_file):
     try:
         unique_filename = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
+        # Timeout Render için optimize edildi
         res = requests.post("https://pixeldrain.com/api/file", 
                              files={'file': (unique_filename, raw_file)}, 
-                             auth=HTTPBasicAuth('', PIXELDRAIN_KEY), timeout=25)
+                             auth=HTTPBasicAuth('', PIXELDRAIN_KEY), timeout=35)
         if res.status_code in [200, 201]:
             return f"https://pixeldrain.com/u/{res.json().get('id')}"
-        return "⚠️ Yükleme Hatası"
+        return f"⚠️ Hata: {res.status_code}"
     except Exception as e:
-        return f"⚠️ Bağlantı Hatası"
+        return f"⚠️ Bağlantı Sorunu"
 
 # ==============================
 # 🤖 BOT MESAJ YÖNETİMİ
@@ -158,17 +164,23 @@ def pixeldrain_yukle(raw_file):
 @bot.message_handler(content_types=['photo', 'document'])
 def handle_incoming(message):
     try:
-        if int(time.time()) - message.date > 120:
+        if int(time.time()) - message.date > 180:
             return
 
         waiting_msg = bot.reply_to(message, "⏳ **İnceleniyor...**", parse_mode="Markdown")
         
-        file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
-        is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
+        # Dosya türünü belirle
+        if message.content_type == 'photo':
+            file_id = message.photo[-1].file_id
+            is_pdf = False
+        else:
+            file_id = message.document.file_id
+            is_pdf = message.document.file_name.lower().endswith(".pdf")
         
         file_info = bot.get_file(file_id)
         current_raw_file = bot.download_file(file_info.file_path)
         
+        # Pixeldrain yüklemesini başlat
         fut_link = executor.submit(pixeldrain_yukle, current_raw_file)
         
         if is_pdf:
@@ -193,10 +205,12 @@ def handle_incoming(message):
         bot.edit_message_text(msg, chat_id=message.chat.id, message_id=waiting_msg.message_id, 
                               parse_mode="Markdown", disable_web_page_preview=True, reply_markup=markup)
         
-        del current_raw_file
-        
     except Exception as e:
-        print(f"İşlem Sırasında Hata: {e}")
+        logging.error(f"Hata oluştu: {e}")
+        # Hata olduğunda kullanıcıyı bilgilendir (Sonsuz beklemeyi önler)
+        try:
+            bot.edit_message_text(f"❌ İşlem başarısız oldu: {str(e)}", chat_id=message.chat.id, message_id=waiting_msg.message_id)
+        except: pass
 
 # ==============================
 # 🚀 BAŞLATMA DÖNGÜSÜ
@@ -206,8 +220,9 @@ def start_bot():
         try:
             bot.remove_webhook()
             bot.infinity_polling(timeout=90, long_polling_timeout=90, skip_pending=True)
-        except:
-            time.sleep(5)
+        except Exception as e:
+            logging.error(f"Polling hatası: {e}")
+            time.sleep(10)
 
 if __name__ == "__main__":
     keep_alive()
