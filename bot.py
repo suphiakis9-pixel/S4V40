@@ -45,10 +45,10 @@ def keep_alive():
     Thread(target=self_ping, daemon=True).start()
 
 # ==============================
-# ⚙️ AYARLAR VE YAPILANDIRMA (YENİ TOKEN EKLENDİ)
+# ⚙️ AYARLAR VE YAPILANDIRMA (YENİ KEY EKLENDİ)
 # ==============================
 API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
-PIXELDRAIN_KEY = "a0f583ba-56b1-429e-aa04-a4908f24c81a"
+PIXELDRAIN_KEY = "8e258cec-7a6e-4328-abcd-82096e5ab2f3"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=10)
 executor = ThreadPoolExecutor(max_workers=5)
@@ -176,7 +176,6 @@ def handle_incoming(message):
         
         link = pixeldrain_yukle(current_raw_file)
         
-        # Link kontrolü ve metin hazırlama
         if link != "ERROR":
             link_text = f"`{link}`"
             show_button = True
@@ -207,7 +206,6 @@ def handle_incoming(message):
         
     except Exception as e:
         if waiting_msg:
-            # Hata mesajını sadeleştirerek Telegram API limitlerine takılmasını engelliyoruz
             bot.edit_message_text(f"❌ İşlem hatası oluştu.", chat_id=message.chat.id, message_id=waiting_msg.message_id)
 
 def start_bot():
