@@ -12,7 +12,6 @@ from flask import Flask
 from threading import Thread
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Loglama
 logging.basicConfig(level=logging.INFO)
 
 # ==============================
@@ -26,7 +25,6 @@ def home():
 
 def run_web():
     try:
-        # Render için portu dinamik alıyoruz, yoksa 5000 varsayılan
         import os
         port = int(os.environ.get("PORT", 5000))
         app.run(host='0.0.0.0', port=port, threaded=True)
@@ -37,24 +35,21 @@ def self_ping():
     time.sleep(20)
     while True:
         try:
-            # Kendi adresini dinamik bulmaya çalışır veya localhost dener
             requests.get("http://127.0.0.1:5000/", timeout=5)
-            print("⚓ Self-Ping: Sistem uyanık...")
         except:
             pass
-        time.sleep(180) # 3 dakikada bir ping
+        time.sleep(180)
 
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
     Thread(target=self_ping, daemon=True).start()
 
 # ==============================
-# ⚙️ AYARLAR VE YAPILANDIRMA (GÜNCEL KEY)
+# ⚙️ AYARLAR VE YAPILANDIRMA (YENİ TOKEN EKLENDİ)
 # ==============================
-API_TOKEN = "8595291883:AAF6czvMBcQRKPtb0eljwKUuoK-9zKchKwE"
+API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
 PIXELDRAIN_KEY = "a0f583ba-56b1-429e-aa04-a4908f24c81a"
 
-# Thread sayıları sunucuya uygun hale getirildi (Tıkanmayı önler)
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=10)
 executor = ThreadPoolExecutor(max_workers=5)
 
@@ -73,7 +68,7 @@ YASAKLI = {
 }
 
 # ==============================
-# 🛠 YARDIMCI FONKSİYONLAR (DEĞİŞTİRİLMEDİ)
+# 🛠 YARDIMCI FONKSİYONLAR
 # ==============================
 def parse_number(text):
     if not text: return None
@@ -148,28 +143,27 @@ def analiz_et_v32(file_bytes):
 def pixeldrain_yukle(raw_file):
     try:
         unique_filename = f"dk_{int(time.time())}_{random.randint(10,99)}.pdf"
-        # Timeout Render için optimize edildi
         res = requests.post("https://pixeldrain.com/api/file", 
                              files={'file': (unique_filename, raw_file)}, 
                              auth=HTTPBasicAuth('', PIXELDRAIN_KEY), timeout=35)
         if res.status_code in [200, 201]:
             return f"https://pixeldrain.com/u/{res.json().get('id')}"
-        return f"⚠️ Hata: {res.status_code}"
-    except Exception as e:
-        return f"⚠️ Bağlantı Sorunu"
+        return "ERROR"
+    except:
+        return "ERROR"
 
 # ==============================
 # 🤖 BOT MESAJ YÖNETİMİ
 # ==============================
 @bot.message_handler(content_types=['photo', 'document'])
 def handle_incoming(message):
+    waiting_msg = None
     try:
         if int(time.time()) - message.date > 180:
             return
 
         waiting_msg = bot.reply_to(message, "⏳ **İnceleniyor...**", parse_mode="Markdown")
         
-        # Dosya türünü belirle
         if message.content_type == 'photo':
             file_id = message.photo[-1].file_id
             is_pdf = False
@@ -180,12 +174,18 @@ def handle_incoming(message):
         file_info = bot.get_file(file_id)
         current_raw_file = bot.download_file(file_info.file_path)
         
-        # Pixeldrain yüklemesini başlat
-        fut_link = executor.submit(pixeldrain_yukle, current_raw_file)
+        link = pixeldrain_yukle(current_raw_file)
+        
+        # Link kontrolü ve metin hazırlama
+        if link != "ERROR":
+            link_text = f"`{link}`"
+            show_button = True
+        else:
+            link_text = "⚠️ *Yükleme başarısız (Sunucu yoğun)*"
+            show_button = False
         
         if is_pdf:
             gonderen, alici, tutar = analiz_et_v32(current_raw_file)
-            link = fut_link.result()
             msg = (
                 "🏦 **ONAY ✅**\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
@@ -193,35 +193,29 @@ def handle_incoming(message):
                 f"👤 **A:** `{alici}`\n"
                 f"💰 **T:** `{tutar}`\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                f"📋 **Kopyala:** `{link}`"
+                f"📋 **Kopyala:** {link_text}"
             )
         else:
-            link = fut_link.result()
-            msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link}`"
+            msg = f"📸 **Görsel Linki ✅**\n\n📋 {link_text}"
 
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("🌍 Görüntüle", url=link))
+        if show_button:
+            markup.add(InlineKeyboardButton("🌍 Görüntüle", url=link))
         
         bot.edit_message_text(msg, chat_id=message.chat.id, message_id=waiting_msg.message_id, 
                               parse_mode="Markdown", disable_web_page_preview=True, reply_markup=markup)
         
     except Exception as e:
-        logging.error(f"Hata oluştu: {e}")
-        # Hata olduğunda kullanıcıyı bilgilendir (Sonsuz beklemeyi önler)
-        try:
-            bot.edit_message_text(f"❌ İşlem başarısız oldu: {str(e)}", chat_id=message.chat.id, message_id=waiting_msg.message_id)
-        except: pass
+        if waiting_msg:
+            # Hata mesajını sadeleştirerek Telegram API limitlerine takılmasını engelliyoruz
+            bot.edit_message_text(f"❌ İşlem hatası oluştu.", chat_id=message.chat.id, message_id=waiting_msg.message_id)
 
-# ==============================
-# 🚀 BAŞLATMA DÖNGÜSÜ
-# ==============================
 def start_bot():
     while True:
         try:
             bot.remove_webhook()
             bot.infinity_polling(timeout=90, long_polling_timeout=90, skip_pending=True)
-        except Exception as e:
-            logging.error(f"Polling hatası: {e}")
+        except:
             time.sleep(10)
 
 if __name__ == "__main__":
