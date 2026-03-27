@@ -1,4 +1,4 @@
-import telebot
+concurrent.futuresimport telebot
 import requests
 import io
 import pypdf
@@ -22,23 +22,29 @@ app = Flask('')
 
 @app.route('/')
 def home():
+    # UptimeRobot buraya ulaşınca bu yazıyı görecek ve bot uyanık kalacak.
     return "Bot Aktif!"
 
 def run_web():
     try:
-        app.run(host='0.0.0.0', port=5000, threaded=True)
+        # Render'ın verdiği PORT üzerinden Flask'ı başlatır
+        import os
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host='0.0.0.0', port=port, threaded=True)
     except Exception as e:
         print(f"Flask Hatası: {e}")
 
 def self_ping():
-    time.sleep(15)
+    """Uykuya dalmayı engellemek için her 120 saniyede bir iç ping atar."""
+    time.sleep(20)
     while True:
         try:
+            # 5 dakikadan (300) 2 dakikaya (120) düşürdük, daha canlı kalacak.
             requests.get("http://127.0.0.1:5000/", timeout=10)
             print("⚓ Self-Ping: Sistem uyanık tutuluyor...")
         except:
             pass
-        time.sleep(300)
+        time.sleep(120)
 
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
@@ -47,6 +53,7 @@ def keep_alive():
 # ==============================
 # ⚙️ AYARLAR VE YAPILANDIRMA (TOKEN GÜNCELLENDİ)
 # ==============================
+# İstediğin yeni Token eklendi
 API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
@@ -139,7 +146,7 @@ def analiz_et_v32(file_bytes):
             return g, a, tutar_bul_final(txt)
     except: return "Hata", "Hata", "Bulunamadı"
 
-# PIXELDRAIN YERİNE CATBOX EKLENDİ
+# PIXELDRAIN YERİNE CATBOX EKLENDİ (KEY GEREKTİRMEZ)
 def catbox_yukle(raw_file):
     try:
         unique_filename = f"dk_{int(time.time())}.pdf"
@@ -215,4 +222,4 @@ def start_bot():
 if __name__ == "__main__":
     keep_alive()
     start_bot()
-        
+    
