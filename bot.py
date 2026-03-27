@@ -22,38 +22,37 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    # UptimeRobot buraya ulaşınca bu yazıyı görecek ve bot uyanık kalacak.
-    return "Bot Aktif!"
+    # Cron-job ve UptimeRobot buraya ulaşınca botun uyanık olduğunu teyit eder.
+    return "Bot Aktif ve Uyanik!"
 
 def run_web():
     try:
-        # Render'ın verdiği PORT üzerinden Flask'ı başlatır
         import os
+        # Render'ın dinamik port atamasını yakalar
         port = int(os.environ.get("PORT", 5000))
         app.run(host='0.0.0.0', port=port, threaded=True)
     except Exception as e:
-        print(f"Flask Hatası: {e}")
+        logging.error(f"Flask Hatası: {e}")
 
 def self_ping():
-    """Uykuya dalmayı engellemek için her 120 saniyede bir iç ping atar."""
-    time.sleep(20)
+    """Botun uykuya dalmasını engellemek için her 120 saniyede bir dış URL'sini tetikler."""
+    time.sleep(30) # Başlangıçta sistemin oturması için bekle
     while True:
         try:
-            # 5 dakikadan (300) 2 dakikaya (120) düşürdük, daha canlı kalacak.
-            requests.get("http://127.0.0.1:5000/", timeout=10)
-            print("⚓ Self-Ping: Sistem uyanık tutuluyor...")
-        except:
-            pass
-        time.sleep(120)
+            # ÖNEMLİ: Kendi dış adresine istek atarak Render'ı kandırır
+            requests.get("https://s4v40.onrender.com/", timeout=15)
+            logging.info("⚓ Self-Ping: Servis dış bağlantı ile tetiklendi.")
+        except Exception as e:
+            logging.warning(f"Self-Ping Hatası (Normal olabilir): {e}")
+        time.sleep(120) # 2 dakikada bir 'ben buradayım' der
 
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
     Thread(target=self_ping, daemon=True).start()
 
 # ==============================
-# ⚙️ AYARLAR VE YAPILANDIRMA (TOKEN GÜNCELLENDİ)
+# ⚙️ AYARLAR VE YAPILANDIRMA
 # ==============================
-# İstediğin yeni Token eklendi
 API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
@@ -146,19 +145,17 @@ def analiz_et_v32(file_bytes):
             return g, a, tutar_bul_final(txt)
     except: return "Hata", "Hata", "Bulunamadı"
 
-# PIXELDRAIN YERİNE CATBOX EKLENDİ (KEY GEREKTİRMEZ)
 def catbox_yukle(raw_file):
     try:
         unique_filename = f"dk_{int(time.time())}.pdf"
         files = {'fileToUpload': (unique_filename, raw_file)}
         data = {'reqtype': 'fileupload'}
         res = requests.post("https://catbox.moe/user/api.php", files=files, data=data, timeout=35)
-        
         if res.status_code == 200 and res.text.startswith("https://"):
             return res.text.strip()
         return "⚠️ Yükleme Hatası"
-    except Exception as e:
-        return f"⚠️ Bağlantı Hatası"
+    except:
+        return "⚠️ Bağlantı Hatası"
 
 # ==============================
 # 🤖 BOT MESAJ YÖNETİMİ
@@ -166,7 +163,7 @@ def catbox_yukle(raw_file):
 @bot.message_handler(content_types=['photo', 'document'])
 def handle_incoming(message):
     try:
-        if int(time.time()) - message.date > 120:
+        if int(time.time()) - message.date > 180:
             return
 
         waiting_msg = bot.reply_to(message, "⏳ **İnceleniyor...**", parse_mode="Markdown")
@@ -177,7 +174,6 @@ def handle_incoming(message):
         file_info = bot.get_file(file_id)
         current_raw_file = bot.download_file(file_info.file_path)
         
-        # Executor ile yükleme yapılıyor
         fut_link = executor.submit(catbox_yukle, current_raw_file)
         
         if is_pdf:
@@ -203,22 +199,19 @@ def handle_incoming(message):
         bot.edit_message_text(msg, chat_id=message.chat.id, message_id=waiting_msg.message_id, 
                               parse_mode="Markdown", disable_web_page_preview=True, reply_markup=markup)
         
-        del current_raw_file
-        
     except Exception as e:
-        print(f"İşlem Sırasında Hata: {e}")
+        logging.error(f"Mesaj İşleme Hatası: {e}")
 
-# ==============================
-# 🚀 BAŞLATMA DÖNGÜSÜ
-# ==============================
 def start_bot():
     while True:
         try:
             bot.remove_webhook()
-            bot.infinity_polling(timeout=90, long_polling_timeout=90, skip_pending=True)
-        except:
+            bot.infinity_polling(timeout=90, skip_pending=True)
+        except Exception as e:
+            logging.error(f"Polling Hatası: {e}")
             time.sleep(5)
 
 if __name__ == "__main__":
     keep_alive()
     start_bot()
+    
