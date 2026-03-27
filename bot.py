@@ -45,10 +45,10 @@ def keep_alive():
     Thread(target=self_ping, daemon=True).start()
 
 # ==============================
-# ⚙️ AYARLAR VE YAPILANDIRMA (YENİ KEYLER EKLENDİ)
+# ⚙️ AYARLAR VE YAPILANDIRMA (KEY GÜNCELLENDİ)
 # ==============================
 API_TOKEN = "8595291883:AAF6czvMBcQRKPtb0eljwKUuoK-9zKchKwE"
-PIXELDRAIN_KEY = "ffc1f7d6-fd72-4ebf-a8d9-386c36ae4582"
+PIXELDRAIN_KEY = "a0f583ba-56b1-429e-aa04-a4908f24c81a"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
 executor = ThreadPoolExecutor(max_workers=20)
@@ -212,3 +212,4 @@ def start_bot():
 if __name__ == "__main__":
     keep_alive()
     start_bot()
+    
