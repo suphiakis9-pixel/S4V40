@@ -22,29 +22,25 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    # Cron-job ve UptimeRobot buraya ulaşınca botun uyanık olduğunu teyit eder.
     return "Bot Aktif ve Uyanik!"
 
 def run_web():
     try:
         import os
-        # Render'ın dinamik port atamasını yakalar
         port = int(os.environ.get("PORT", 5000))
         app.run(host='0.0.0.0', port=port, threaded=True)
     except Exception as e:
         logging.error(f"Flask Hatası: {e}")
 
 def self_ping():
-    """Botun uykuya dalmasını engellemek için her 120 saniyede bir dış URL'sini tetikler."""
-    time.sleep(30) # Başlangıçta sistemin oturması için bekle
+    time.sleep(30)
     while True:
         try:
-            # ÖNEMLİ: Kendi dış adresine istek atarak Render'ı kandırır
+            # Kendi adresini tetikleyerek uyanık kalır
             requests.get("https://s4v40.onrender.com/", timeout=15)
-            logging.info("⚓ Self-Ping: Servis dış bağlantı ile tetiklendi.")
-        except Exception as e:
-            logging.warning(f"Self-Ping Hatası (Normal olabilir): {e}")
-        time.sleep(120) # 2 dakikada bir 'ben buradayım' der
+        except:
+            pass
+        time.sleep(120)
 
 def keep_alive():
     Thread(target=run_web, daemon=True).start()
@@ -145,17 +141,22 @@ def analiz_et_v32(file_bytes):
             return g, a, tutar_bul_final(txt)
     except: return "Hata", "Hata", "Bulunamadı"
 
+# GÜNCELLENEN KATBOX YÜKLEME (RETRY SİSTEMİ EKLENDİ)
 def catbox_yukle(raw_file):
-    try:
-        unique_filename = f"dk_{int(time.time())}.pdf"
-        files = {'fileToUpload': (unique_filename, raw_file)}
-        data = {'reqtype': 'fileupload'}
-        res = requests.post("https://catbox.moe/user/api.php", files=files, data=data, timeout=35)
-        if res.status_code == 200 and res.text.startswith("https://"):
-            return res.text.strip()
-        return "⚠️ Yükleme Hatası"
-    except:
-        return "⚠️ Bağlantı Hatası"
+    for deneme in range(3): # 3 kere deneyecek
+        try:
+            unique_filename = f"dk_{int(time.time())}.pdf"
+            files = {'fileToUpload': (unique_filename, raw_file)}
+            data = {'reqtype': 'fileupload'}
+            res = requests.post("https://catbox.moe/user/api.php", files=files, data=data, timeout=30)
+            
+            if res.status_code == 200 and res.text.startswith("https://"):
+                return res.text.strip()
+            time.sleep(2) # Hata olursa 2 saniye bekle
+        except:
+            time.sleep(2)
+            continue
+    return "⚠️ Bağlantı Hatası"
 
 # ==============================
 # 🤖 BOT MESAJ YÖNETİMİ
@@ -200,7 +201,7 @@ def handle_incoming(message):
                               parse_mode="Markdown", disable_web_page_preview=True, reply_markup=markup)
         
     except Exception as e:
-        logging.error(f"Mesaj İşleme Hatası: {e}")
+        logging.error(f"Hata: {e}")
 
 def start_bot():
     while True:
@@ -208,7 +209,6 @@ def start_bot():
             bot.remove_webhook()
             bot.infinity_polling(timeout=90, skip_pending=True)
         except Exception as e:
-            logging.error(f"Polling Hatası: {e}")
             time.sleep(5)
 
 if __name__ == "__main__":
