@@ -3,7 +3,7 @@ from flask import Flask
 from threading import Thread
 
 # ==============================
-# ⚙️ SUNUCU (Render Port Ayarı)
+# ⚙️ SUNUCU
 # ==============================
 app = Flask('')
 
@@ -13,14 +13,14 @@ def home():
 
 def run_web():
     try:
-        # RENDER İÇİN ŞART: Portu sistemden otomatik alır
+        # Render için portu sistemden çekiyoruz
         port = int(os.environ.get('PORT', 7860))
         app.run(host='0.0.0.0', port=port)
     except Exception as e:
         print(f"Sunucu hatası: {e}")
 
 # ==============================
-# 🚀 KEEP ALIVE
+# 🚀 KEEP ALIVE (GÜÇLENDİRİLDİ)
 # ==============================
 def keep_alive():
     time.sleep(5)
@@ -57,32 +57,56 @@ def worker():
             task_queue.task_done()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (BİREBİR AYNI - DOKUNULMADI)
+# 🧠 v32 ANALİZ MOTORU (BİREBİR SENİN KODUN)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
-YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
+
+YASAKLI = {
+    "ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR",
+    "MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME",
+    "MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN",
+    "ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN",
+    "PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ",
+    "AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU",
+    "İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI",
+    "AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"
+}
 
 def parse_number(text):
     if not text: return None
     text = re.sub(r'[^0-9,.]', '', text.replace(" ", ""))
-    if text.count(",") > 0 and text.count(".") == 0: text = text.replace(",", "")
-    elif text.count(".") > 0 and text.count(",") == 0: text = text.replace(".", "")
+    if text.count(",") > 0 and text.count(".") == 0:
+        text = text.replace(",", "")
+    elif text.count(".") > 0 and text.count(",") == 0:
+        text = text.replace(".", "")
     elif text.count(",") > 0 and text.count(".") > 0:
-        if text.find(",") < text.find("."): text = text.replace(",", "")
-        else: text = text.replace(".", "").replace(",", ".")
-    try: return float(text)
-    except: return None
+        if text.find(",") < text.find("."):
+            text = text.replace(",", "")
+        else:
+            text = text.replace(".", "").replace(",", ".")
+    try:
+        return float(text)
+    except:
+        return None
 
 def ismi_temizle(metin):
     if not metin: return None
     t = re.sub(r'(SAYIN|ALACAKLI|GÖNDEREN|ALICI|MÜŞTERİ|ÜNVANI|ALACAKLI ADI SOYADI|ADI SOYADI|AD SOYAD|ADI)\s*[:]*', '', metin.upper())
     t = CLEAN_RE.sub(' ', re.sub(r'\d+', '', t))
     parcalar = [x for x in t.split() if x not in YASAKLI and len(x) > 1]
-    if any(k in t for k in ["ŞUBE","MÜDÜRLÜĞÜ","VALÖR","A.Ş.","BANKASI"]): return None
-    return " ".join(parcalar[:3]) if len(parcalar) >= 2 else None
+    if any(k in t for k in ["ŞUBE","MÜDÜRLÜĞÜ","VALÖR","A.Ş.","BANKASI"]):
+        return None
+    if len(parcalar) >= 2:
+        return " ".join(parcalar[:3])
+    return None
 
 def tutar_bul_final(full_text):
-    patterns = [r'(?:TL|TUTARI|TUTAR|Tutar)\s*[:]*\s*([\d.,]{4,20})', r'B\s+TL\s+([\d.,]{4,20})', r'İŞLEM TUTARI\s*\(TL\)\s*:\s*([\d.,]{4,20})', r'Havale Tutarı\s*:\s*([\d.,]{4,20})']
+    patterns = [
+        r'(?:TL|TUTARI|TUTAR|Tutar)\s*[:]*\s*([\d.,]{4,20})',
+        r'B\s+TL\s+([\d.,]{4,20})',
+        r'İŞLEM TUTARI\s*\(TL\)\s*:\s*([\d.,]{4,20})',
+        r'Havale Tutarı\s*:\s*([\d.,]{4,20})'
+    ]
     for pattern in patterns:
         matches = re.findall(pattern, full_text, re.IGNORECASE)
         for m in matches:
@@ -94,25 +118,66 @@ def tutar_bul_final(full_text):
 def analiz_et_v32(file_bytes):
     try:
         pdf = pypdf.PdfReader(io.BytesIO(file_bytes))
-        txt = "".join([page.extract_text() + "\n" for page in pdf.pages])
+        txt = ""
+        for page in pdf.pages:
+            txt += page.extract_text() + "\n"
+
         lns = [l.strip() for l in txt.split('\n') if l.strip()]
         g, a = "Bilinmiyor", "Bilinmiyor"
+
         for i, l in enumerate(lns):
             l_up = l.upper()
             if "GÖNDEREN:" in l_up:
-                res = ismi_temizle(l_up.split("GÖNDEREN:")[1].split("AÇIKLAMA:")[0])
+                temp = l_up.split("GÖNDEREN:")[1].split("AÇIKLAMA:")[0].strip()
+                res = ismi_temizle(temp)
                 if res: g = res
             elif "ALICI ÜNVANI:" in l_up:
-                res = ismi_temizle(l_up.split("ALICI ÜNVANI:")[1].split("ALICI IBAN:")[0])
+                temp = l_up.split("ALICI ÜNVANI:")[1].split("ALICI IBAN:")[0].strip()
+                res = ismi_temizle(temp)
                 if res: a = res
             if "ALACAKLI ADI SOYADI" in l_up and ":" in l_up:
-                res = ismi_temizle(l_up.split(":")[1])
+                temp = l_up.split(":")[1].strip()
+                res = ismi_temizle(temp)
                 if res: a = res
+            if "SAYIN" in l_up:
+                combined = l_up.replace("SAYIN", "").strip()
+                if i+1 < len(lns):
+                    combined += " " + lns[i+1].upper()
+                res = ismi_temizle(combined)
+                if res and g == "Bilinmiyor":
+                    g = res
+            if g == "Bilinmiyor" and any(k in l_up for k in ["GÖNDEREN","AD SOYAD"]):
+                res = ismi_temizle(l)
+                if not res and i+1 < len(lns):
+                    res = ismi_temizle(lns[i+1])
+                if res: g = res
+            if a == "Bilinmiyor" and any(k in l_up for k in ["ALICI","LEHTAR","ÜNVANI"]):
+                if "BANKACILIĞI" not in l_up:
+                    res = ismi_temizle(l)
+                    if not res and i+1 < len(lns):
+                        res = ismi_temizle(lns[i+1])
+                    if res: a = res
         return g, a, tutar_bul_final(txt)
-    except: return "Hata","Hata","Bulunamadı"
+    except:
+        return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# 🤖 İŞLEM YAP
+# ☁️ YÜKLEME
+# ==============================
+def dosya_yukle_yedekli(raw_file, uzanti):
+    file_name = f"islem_{int(time.time())}{uzanti}"
+    try:
+        r = requests.post("https://pixeldrain.com/api/file",
+                          auth=("", PIXELDRAIN_API_KEY),
+                          files={"file": (file_name, raw_file)},
+                          timeout=15)
+        if r.status_code in [200,201]:
+            return f"https://pixeldrain.com/api/file/{r.json().get('id')}"
+    except: pass
+    return "⚠️ Link Alınamadı"
+
+# ==============================
+# 🤖 İŞLEM
 # ==============================
 def islem_yap(message):
     try:
@@ -120,25 +185,46 @@ def islem_yap(message):
         file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
         is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
         
-        raw = bot.download_file(bot.get_file(file_id).file_path)
-        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (f"i_{int(time.time())}.pdf" if is_pdf else "i.jpg", raw)}, timeout=15)
-        link = f"https://pixeldrain.com/api/file/{r.json().get('id')}" if r.status_code in [200,201] else "⚠️ Link Hatası"
+        file_info = bot.get_file(file_id)
+        raw = bot.download_file(file_info.file_path)
+        link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
 
         if is_pdf:
-            g, a, t = analiz_et_v32(raw)
-            msg = f"🏦 **ONAY ✅**\n━━━━━━━━━━━━\n👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n━━━━━━━━━━━━\n📋 `{link}`"
+            g,a,t = analiz_et_v32(raw)
+            msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n"
+                   f"👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link}`")
         else:
             msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link}`"
+
         bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown")
-    except: pass
+    except Exception as e:
+        print("İşlem hatası:", e)
 
+# ==============================
+# 📩 HANDLE
+# ==============================
 @bot.message_handler(content_types=['photo','document'])
-def handle(m): task_queue.put(m)
+def handle(m):
+    task_queue.put(m)
 
+# ==============================
+# 🚀 START
+# ==============================
 if __name__ == "__main__":
+    # Render için webhook temizliği
     requests.get(f"https://api.telegram.org/bot{API_TOKEN}/deleteWebhook")
+    
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive, daemon=True).start()
-    for _ in range(2): Thread(target=worker, daemon=True).start()
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
-            
+
+    for _ in range(2):
+        Thread(target=worker, daemon=True).start()
+
+    print("--- ROJARES PRO BOT RENDER'DA ---")
+
+    while True:
+        try:
+            bot.infinity_polling(timeout=10, long_polling_timeout=5, skip_pending=False)
+        except Exception as e:
+            time.sleep(2)
