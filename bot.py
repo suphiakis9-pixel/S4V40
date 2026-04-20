@@ -9,25 +9,40 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return f"Sistem Aktif - {time.strftime('%H:%M:%S')}"
+    return f"Bot Aktif! {time.strftime('%H:%M:%S')}"
 
 def run_web():
     try:
-        # Render'ın verdiği portu otomatik yakalar, yoksa 10000 kullanır
-        port = int(os.environ.get('PORT', 10000))
+        # RENDER İÇİN ŞART: Portu sistemden otomatik alır
+        port = int(os.environ.get('PORT', 7860))
         app.run(host='0.0.0.0', port=port)
-    except: pass
+    except Exception as e:
+        print(f"Sunucu hatası: {e}")
 
 # ==============================
-# ⚙️ TOKEN VE AYARLAR
+# 🚀 KEEP ALIVE
+# ==============================
+def keep_alive():
+    time.sleep(5)
+    while True:
+        try:
+            port = os.environ.get('PORT', '7860')
+            requests.get(f"http://127.0.0.1:{port}/", timeout=10)
+            requests.get("https://www.google.com", timeout=10)
+        except:
+            pass
+        time.sleep(30)
+
+# ==============================
+# ⚙️ TOKEN VE API BİLGİLERİ
 # ==============================
 API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
-PIXEL_KEY = "8e258cec-7a6e-4328-abcd-82096e5ab2f3"
+PIXELDRAIN_API_KEY = "8e258cec-7a6e-4328-abcd-82096e5ab2f3"
 
-bot = telebot.TeleBot(API_TOKEN, threaded=False)
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 
 # ==============================
-# 🔥 QUEUE SİSTEMİ (SENİN ORİJİNAL YAPIN)
+# 🔥 QUEUE SİSTEMİ
 # ==============================
 task_queue = queue.Queue()
 
@@ -36,12 +51,13 @@ def worker():
         message = task_queue.get()
         try:
             islem_yap(message)
-        except: pass
+        except Exception as e:
+            print("Worker hatası:", e)
         finally:
             task_queue.task_done()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (BİREBİR KORUNDU)
+# 🧠 v32 ANALİZ MOTORU (BİREBİR AYNI - DOKUNULMADI)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -63,8 +79,7 @@ def ismi_temizle(metin):
     t = CLEAN_RE.sub(' ', re.sub(r'\d+', '', t))
     parcalar = [x for x in t.split() if x not in YASAKLI and len(x) > 1]
     if any(k in t for k in ["ŞUBE","MÜDÜRLÜĞÜ","VALÖR","A.Ş.","BANKASI"]): return None
-    if len(parcalar) >= 2: return " ".join(parcalar[:3])
-    return None
+    return " ".join(parcalar[:3]) if len(parcalar) >= 2 else None
 
 def tutar_bul_final(full_text):
     patterns = [r'(?:TL|TUTARI|TUTAR|Tutar)\s*[:]*\s*([\d.,]{4,20})', r'B\s+TL\s+([\d.,]{4,20})', r'İŞLEM TUTARI\s*\(TL\)\s*:\s*([\d.,]{4,20})', r'Havale Tutarı\s*:\s*([\d.,]{4,20})']
@@ -97,44 +112,33 @@ def analiz_et_v32(file_bytes):
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# 🤖 İŞLEM YAP (ORİJİNAL AKIŞ)
+# 🤖 İŞLEM YAP
 # ==============================
 def islem_yap(message):
     try:
-        waiting = bot.reply_to(message, "⏳ **İşleniyor...**")
+        waiting = bot.reply_to(message, "⏳ **İnceleniyor...**")
         file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
         is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
         
-        file_info = bot.get_file(file_id)
-        raw = bot.download_file(file_info.file_path)
-        
-        # Pixeldrain yükleme
-        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXEL_KEY), files={"file": (f"i_{int(time.time())}.{'pdf' if is_pdf else 'jpg'}", raw)}, timeout=15)
-        link = f"https://pixeldrain.com/api/file/{r.json().get('id')}" if r.status_code in [200,201] else "⚠️ Link Alınamadı"
+        raw = bot.download_file(bot.get_file(file_id).file_path)
+        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (f"i_{int(time.time())}.pdf" if is_pdf else "i.jpg", raw)}, timeout=15)
+        link = f"https://pixeldrain.com/api/file/{r.json().get('id')}" if r.status_code in [200,201] else "⚠️ Link Hatası"
 
         if is_pdf:
             g, a, t = analiz_et_v32(raw)
             msg = f"🏦 **ONAY ✅**\n━━━━━━━━━━━━\n👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n━━━━━━━━━━━━\n📋 `{link}`"
         else:
             msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link}`"
-            
         bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown")
     except: pass
 
 @bot.message_handler(content_types=['photo','document'])
 def handle(m): task_queue.put(m)
 
-# ==============================
-# 🚀 BAŞLATICI
-# ==============================
 if __name__ == "__main__":
-    # Webhook temizliği
     requests.get(f"https://api.telegram.org/bot{API_TOKEN}/deleteWebhook")
-    
-    # Render'da thread'ler daha rahat çalışır
     Thread(target=run_web, daemon=True).start()
-    Thread(target=worker, daemon=True).start()
-
-    print("--- v32 MOTORU RENDER'DA AKTİF ---")
-    
-    bot.infinity_polling(timeout=30, long_polling_timeout=15)
+    Thread(target=keep_alive, daemon=True).start()
+    for _ in range(2): Thread(target=worker, daemon=True).start()
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+            
