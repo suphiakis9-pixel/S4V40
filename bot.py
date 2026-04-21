@@ -34,10 +34,10 @@ def keep_alive():
         time.sleep(30)
 
 # ==============================
-# ⚙️ TOKEN VE API BİLGİLERİ
+# ⚙️ TOKEN VE API BİLGİLERİ (GÜNCELLENDİ)
 # ==============================
-API_TOKEN = "8738306341:AAEdLn9E5L7LpdvPQpwRYvcp4w6lwsVCHH4"
-PIXELDRAIN_API_KEY = "8e258cec-7a6e-4328-abcd-82096e5ab2f3"
+API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14"
+PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 
@@ -228,3 +228,4 @@ if __name__ == "__main__":
             bot.infinity_polling(timeout=10, long_polling_timeout=5, skip_pending=False)
         except Exception as e:
             time.sleep(2)
+                
