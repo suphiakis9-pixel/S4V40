@@ -32,7 +32,7 @@ bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU
+# 🧠 v32 ANALİZ MOTORU (ORİJİNAL YAPI)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -80,6 +80,7 @@ def analiz_et_v32(file_bytes):
         for page in pdf.pages: txt += page.extract_text() + "\n"
         lns = [l.strip() for l in txt.split('\n') if l.strip()]
         g, a = "Bilinmiyor", "Bilinmiyor"
+        
         for i, l in enumerate(lns):
             l_up = l.upper()
             if "ADI SOYADI" in l_up and i < 10:
@@ -95,11 +96,23 @@ def analiz_et_v32(file_bytes):
             elif "ALICI ÜNVANI:" in l_up:
                 res = ismi_temizle(l_up.split("ALICI ÜNVANI:")[1].split("ALICI IBAN:")[0].strip())
                 if res: a = res
+            if "ALACAKLI ADI SOYADI" in l_up and ":" in l_up:
+                res = ismi_temizle(l_up.split(":")[1].strip())
+                if res: a = res
             if "SAYIN" in l_up:
                 comb = l_up.replace("SAYIN", "").strip()
                 if i+1 < len(lns): comb += " " + lns[i+1].upper()
                 res = ismi_temizle(comb)
                 if res and g == "Bilinmiyor": g = res
+            if g == "Bilinmiyor" and any(k in l_up for k in ["GÖNDEREN","AD SOYAD"]):
+                res = ismi_temizle(l)
+                if not res and i+1 < len(lns): res = ismi_temizle(lns[i+1])
+                if res: g = res
+            if a == "Bilinmiyor" and any(k in l_up for k in ["ALICI","LEHTAR","ÜNVANI"]):
+                if "BANKACILIĞI" not in l_up:
+                    res = ismi_temizle(l)
+                    if not res and i+1 < len(lns): res = ismi_temizle(lns[i+1])
+                    if res: a = res
         return g, a, tutar_bul_final(txt)
     except: return "Hata","Hata","Bulunamadı"
 
@@ -121,11 +134,10 @@ def dosya_yukle_yedekli(raw_file, uzanti):
     return None
 
 # ==============================
-# 🤖 İŞLEM (ANİMASYONLU)
+# 🤖 İŞLEM (ANİMASYONLU KUM SAATİ)
 # ==============================
 def islem_yap(message):
     try:
-        # Sadece hareketli kum saati gönderilir
         waiting = bot.reply_to(message, "⌛")
         
         file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
@@ -168,6 +180,6 @@ if __name__ == "__main__":
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive, daemon=True).start()
     for _ in range(2): Thread(target=worker, daemon=True).start()
-    print("BOT AKTİF - YENİ TOKEN")
+    print("BOT AKTİF - YENİ TOKEN UYGULANDI")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
-    
+        
