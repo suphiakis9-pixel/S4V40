@@ -32,7 +32,7 @@ bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (ORİJİNAL YAPI)
+# 🧠 v32 ANALİZ MOTORU (ORİJİNAL YAPI - DOKUNULMADI)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -117,21 +117,32 @@ def analiz_et_v32(file_bytes):
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# ☁️ YEDEKLİ YÜKLEME (Pixeldrain + Catbox)
+# ☁️ YEDEKLİ YÜKLEME (Pixeldrain -> Catbox Geçişi)
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
+    link = None
+    
+    # 1. Deneme: Pixeldrain
     try:
         r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=10)
         if r.status_code in [200, 201]:
             d = r.json()
-            if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
-    except: pass
-    try:
-        r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=12)
-        if r_c.status_code == 200: return r_c.text.strip()
-    except: pass
-    return None
+            if d.get("id"): 
+                link = f"https://pixeldrain.com/api/file/{d.get('id')}"
+    except:
+        pass
+
+    # 2. Deneme: Pixeldrain başarısızsa Catbox devreye girer
+    if not link:
+        try:
+            r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=12)
+            if r_c.status_code == 200: 
+                link = r_c.text.strip()
+        except:
+            pass
+            
+    return link
 
 # ==============================
 # 🤖 İŞLEM (ANİMASYONLU KUM SAATİ)
@@ -145,6 +156,8 @@ def islem_yap(message):
         
         file_info = bot.get_file(file_id)
         raw = bot.download_file(file_info.file_path)
+        
+        # Yedekli sistemi çağıran kısım
         link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
 
         markup = types.InlineKeyboardMarkup()
@@ -180,6 +193,6 @@ if __name__ == "__main__":
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive, daemon=True).start()
     for _ in range(2): Thread(target=worker, daemon=True).start()
-    print("BOT AKTİF - YENİ TOKEN UYGULANDI")
+    print("BOT AKTİF - YEDEKLİ YÜKLEME SİSTEMİ DÜZELTİLDİ")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
         
