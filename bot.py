@@ -4,31 +4,24 @@ from threading import Thread
 from telebot import types
 
 # ==============================
-# ⚙️ SUNUCU VE AYARLAR
+# ⚙️ SUNUCU VE AYARLAR (Render Uyumlu)
 # ==============================
 app = Flask('')
 @app.route('/')
 def home(): return f"Bot Aktif! {time.strftime('%H:%M:%S')}"
 
 def run_web():
-    try:
-        port = int(os.environ.get('PORT', 7860))
-        app.run(host='0.0.0.0', port=port)
-    except: pass
+    # Render PORT değişkenini otomatik atar
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
 
-def keep_alive():
-    while True:
-        try:
-            port = os.environ.get('PORT', '7860')
-            requests.get(f"http://127.0.0.1:{port}/", timeout=10)
-        except: pass
-        time.sleep(30)
-
-# TOKENS
+# ==============================
+# 🔑 TOKENS & CONFIG
+# ==============================
 API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14"
 PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9"
 
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=10)
 task_queue = queue.Queue()
 
 # ==============================
@@ -83,8 +76,7 @@ def analiz_et_v32(file_bytes):
         for i, l in enumerate(lns):
             l_up = l.upper()
             if "ADI SOYADI" in l_up and i < 10:
-                res = ismi_temizle(l_up)
-                if res: g = res
+                res = ismi_temizle(l_up); g = res if res else g
             if "ALICI ADI SOYADI" in l_up:
                 res = ismi_temizle(l_up)
                 if not res and i+1 < len(lns): res = ismi_temizle(lns[i+1])
@@ -116,36 +108,23 @@ def analiz_et_v32(file_bytes):
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# ☁️ YEDEKLİ YÜKLEME (GÜNCELLENDİ)
+# ☁️ YÜKLEME (SADECE PIXELDRAIN)
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
-    link = None
-    
-    # Bytes olduğundan emin ol
-    file_io = io.BytesIO(raw_file)
-    file_io.name = fn
-
-    # 1. Deneme: Pixeldrain
     try:
-        file_io.seek(0)
-        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": file_io}, timeout=10)
+        # Render sunucularında stream daha güvenlidir
+        r = requests.post(
+            "https://pixeldrain.com/api/file", 
+            auth=("", PIXELDRAIN_API_KEY), 
+            files={"file": (fn, io.BytesIO(raw_file))}, 
+            timeout=30
+        )
         if r.status_code in [200, 201]:
             d = r.json()
-            if d.get("id"): 
-                link = f"https://pixeldrain.com/api/file/{d.get('id')}"
+            if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
     except: pass
-
-    # 2. Deneme: Catbox
-    if not link:
-        try:
-            file_io.seek(0)
-            r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": file_io}, timeout=15)
-            if r_c.status_code == 200 and "https" in r_c.text: 
-                link = r_c.text.strip()
-        except: pass
-            
-    return link
+    return None
 
 # ==============================
 # 🤖 İŞLEM (ANİMASYONLU)
@@ -153,13 +132,11 @@ def dosya_yukle_yedekli(raw_file, uzanti):
 def islem_yap(message):
     try:
         waiting = bot.reply_to(message, "⌛")
-        
         file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
         is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
         
         file_info = bot.get_file(file_id)
         raw = bot.download_file(file_info.file_path)
-        
         link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
 
         markup = types.InlineKeyboardMarkup()
@@ -187,14 +164,8 @@ def worker():
 def handle(m): task_queue.put(m)
 
 if __name__ == "__main__":
-    try:
-        requests.get(f"https://api.telegram.org/bot{API_TOKEN}/deleteWebhook")
-        bot.delete_webhook()
-    except: pass
-    
     Thread(target=run_web, daemon=True).start()
-    Thread(target=keep_alive, daemon=True).start()
-    for _ in range(2): Thread(target=worker, daemon=True).start()
-    print("BOT AKTİF - YÜKLEME SORUNU GİDERİLDİ")
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
-                    
+    for _ in range(3): Thread(target=worker, daemon=True).start()
+    print("RENDER ÜZERİNDE AKTİF!")
+    bot.infinity_polling(timeout=20, long_polling_timeout=10)
+    
