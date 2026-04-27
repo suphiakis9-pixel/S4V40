@@ -4,15 +4,33 @@ from threading import Thread
 from telebot import types
 
 # ==============================
-# ⚙️ SUNUCU VE AYARLAR
+# ⚙️ SUNUCU VE İÇ DÜRTME SİSTEMİ
 # ==============================
 app = Flask('')
+
 @app.route('/')
-def home(): return f"Bot Aktif! {time.strftime('%H:%M:%S')}"
+def home(): 
+    return f"Sistem Canlı - {time.strftime('%H:%M:%S')}"
+
+@app.route('/durt')
+def durt():
+    return "Dürtme Başarılı", 200
 
 def run_web():
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
+
+# --- İÇTEN DÜRTME MOTORU ---
+def icten_durtme():
+    """Botu uyutmamak için her 5 dakikada bir içten sinyal gönderir."""
+    while True:
+        try:
+            # Dışarıdan linke gerek kalmadan lokal sunucuyu dürter
+            requests.get("http://127.0.0.1:10000/durt", timeout=5)
+            print(f"[{time.strftime('%H:%M:%S')}] İç Dürtme: Bot tetiklendi.")
+        except:
+            pass
+        time.sleep(300) # Her 5 dakikada bir (300 saniye)
 
 # ==============================
 # 🔑 TOKENS & CONFIG
@@ -109,63 +127,44 @@ def analiz_et_v32(file_bytes):
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# ☁️ YÜKLEME (PIXELDRAIN -> IMGBB)
+# ☁️ YÜKLEME (PIXELDRAIN + IMGBB)
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     link = None
     fn = f"doc_{int(time.time())}{uzanti}"
-    
-    # 1. Deneme: Pixeldrain
     try:
-        r = requests.post("https://pixeldrain.com/api/file", 
-                         auth=("", PIXELDRAIN_API_KEY), 
-                         files={"file": (fn, io.BytesIO(raw_file))}, 
-                         timeout=15)
+        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, io.BytesIO(raw_file))}, timeout=15)
         if r.status_code in [200, 201]:
             d = r.json()
             if d.get("id"): link = f"https://pixeldrain.com/api/file/{d.get('id')}"
     except: pass
-
-    # 2. Deneme: ImgBB (Yedek)
     if not link:
         try:
             b64_file = base64.b64encode(raw_file)
-            r_i = requests.post("https://api.imgbb.com/1/upload", 
-                               data={"key": IMGBB_API_KEY, "image": b64_file}, 
-                               timeout=20)
-            if r_i.status_code == 200:
-                link = r_i.json().get("data", {}).get("url")
+            r_i = requests.post("https://api.imgbb.com/1/upload", data={"key": IMGBB_API_KEY, "image": b64_file}, timeout=20)
+            if r_i.status_code == 200: link = r_i.json().get("data", {}).get("url")
         except: pass
-            
     return link
 
 # ==============================
-# 🤖 İŞLEM (ANİMASYONLU)
+# 🤖 İŞLEM VE KUYRUK
 # ==============================
 def islem_yap(message):
     try:
         if message.date < BOT_START_TIME: return
-
         waiting = bot.reply_to(message, "⌛")
         file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
         is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
-        
         file_info = bot.get_file(file_id)
         raw = bot.download_file(file_info.file_path)
-        
         link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
-
         markup = types.InlineKeyboardMarkup()
         if link: markup.add(types.InlineKeyboardButton("👁‍🗨 Görüntüle", url=link))
-
         if is_pdf:
             g, a, t = analiz_et_v32(raw)
-            msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n"
-                   f"👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata'}`")
+            msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata'}`")
         else:
             msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Alınamadı'}`"
-
         bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
     except: pass
 
@@ -178,12 +177,12 @@ def worker():
 
 @bot.message_handler(content_types=['photo','document'])
 def handle(m):
-    if m.date >= BOT_START_TIME:
-        task_queue.put(m)
+    if m.date >= BOT_START_TIME: task_queue.put(m)
 
 if __name__ == "__main__":
     Thread(target=run_web, daemon=True).start()
+    Thread(target=icten_durtme, daemon=True).start() # İç dürtme motoru başlatıldı
     for _ in range(3): Thread(target=worker, daemon=True).start()
-    print("SİSTEM AKTİF: PIXELDRAIN + IMGBB")
+    print("BOT AKTİF - İÇ DÜRTME SİSTEMİ DEVREDE")
     bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
-    
+                                  
