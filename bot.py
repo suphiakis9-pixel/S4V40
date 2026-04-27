@@ -24,7 +24,7 @@ def keep_alive():
         except: pass
         time.sleep(30)
 
-# BELİRTTİĞİN GÜNCEL TOKEN
+# TOKENS
 API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14"
 PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9"
 
@@ -32,7 +32,7 @@ bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (ORİJİNAL YAPI - DOKUNULMADI)
+# 🧠 v32 ANALİZ MOTORU (DOKUNULMADI)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -80,7 +80,6 @@ def analiz_et_v32(file_bytes):
         for page in pdf.pages: txt += page.extract_text() + "\n"
         lns = [l.strip() for l in txt.split('\n') if l.strip()]
         g, a = "Bilinmiyor", "Bilinmiyor"
-        
         for i, l in enumerate(lns):
             l_up = l.upper()
             if "ADI SOYADI" in l_up and i < 10:
@@ -117,35 +116,39 @@ def analiz_et_v32(file_bytes):
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# ☁️ YEDEKLİ YÜKLEME (Pixeldrain -> Catbox Geçişi)
+# ☁️ YEDEKLİ YÜKLEME (GÜNCELLENDİ)
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
     link = None
     
+    # Bytes olduğundan emin ol
+    file_io = io.BytesIO(raw_file)
+    file_io.name = fn
+
     # 1. Deneme: Pixeldrain
     try:
-        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=10)
+        file_io.seek(0)
+        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": file_io}, timeout=10)
         if r.status_code in [200, 201]:
             d = r.json()
             if d.get("id"): 
                 link = f"https://pixeldrain.com/api/file/{d.get('id')}"
-    except:
-        pass
+    except: pass
 
-    # 2. Deneme: Pixeldrain başarısızsa Catbox devreye girer
+    # 2. Deneme: Catbox
     if not link:
         try:
-            r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=12)
-            if r_c.status_code == 200: 
+            file_io.seek(0)
+            r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": file_io}, timeout=15)
+            if r_c.status_code == 200 and "https" in r_c.text: 
                 link = r_c.text.strip()
-        except:
-            pass
+        except: pass
             
     return link
 
 # ==============================
-# 🤖 İŞLEM (ANİMASYONLU KUM SAATİ)
+# 🤖 İŞLEM (ANİMASYONLU)
 # ==============================
 def islem_yap(message):
     try:
@@ -157,7 +160,6 @@ def islem_yap(message):
         file_info = bot.get_file(file_id)
         raw = bot.download_file(file_info.file_path)
         
-        # Yedekli sistemi çağıran kısım
         link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
 
         markup = types.InlineKeyboardMarkup()
@@ -193,6 +195,6 @@ if __name__ == "__main__":
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive, daemon=True).start()
     for _ in range(2): Thread(target=worker, daemon=True).start()
-    print("BOT AKTİF - YEDEKLİ YÜKLEME SİSTEMİ DÜZELTİLDİ")
+    print("BOT AKTİF - YÜKLEME SORUNU GİDERİLDİ")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
-        
+                    
