@@ -1,17 +1,16 @@
-import telebot, requests, io, pypdf, re, time, queue, os
+import telebot, requests, io, pypdf, re, time, queue, os, base64
 from flask import Flask
 from threading import Thread
 from telebot import types
 
 # ==============================
-# ⚙️ SUNUCU VE AYARLAR (Render Uyumlu)
+# ⚙️ SUNUCU VE AYARLAR
 # ==============================
 app = Flask('')
 @app.route('/')
 def home(): return f"Bot Aktif! {time.strftime('%H:%M:%S')}"
 
 def run_web():
-    # Render PORT değişkenini otomatik atar
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
 
@@ -20,12 +19,14 @@ def run_web():
 # ==============================
 API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14"
 PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9"
+IMGBB_API_KEY = "810e9541310aca8c085c9cd259179384"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=10)
 task_queue = queue.Queue()
+BOT_START_TIME = time.time()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (DOKUNULMADI)
+# 🧠 v32 ANALİZ MOTORU (KORUNDU)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -108,35 +109,50 @@ def analiz_et_v32(file_bytes):
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# ☁️ YÜKLEME (SADECE PIXELDRAIN)
+# ☁️ YÜKLEME (PIXELDRAIN -> IMGBB)
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
-    fn = f"is_f_{int(time.time())}{uzanti}"
+    link = None
+    fn = f"doc_{int(time.time())}{uzanti}"
+    
+    # 1. Deneme: Pixeldrain
     try:
-        # Render sunucularında stream daha güvenlidir
-        r = requests.post(
-            "https://pixeldrain.com/api/file", 
-            auth=("", PIXELDRAIN_API_KEY), 
-            files={"file": (fn, io.BytesIO(raw_file))}, 
-            timeout=30
-        )
+        r = requests.post("https://pixeldrain.com/api/file", 
+                         auth=("", PIXELDRAIN_API_KEY), 
+                         files={"file": (fn, io.BytesIO(raw_file))}, 
+                         timeout=15)
         if r.status_code in [200, 201]:
             d = r.json()
-            if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
+            if d.get("id"): link = f"https://pixeldrain.com/api/file/{d.get('id')}"
     except: pass
-    return None
+
+    # 2. Deneme: ImgBB (Yedek)
+    if not link:
+        try:
+            b64_file = base64.b64encode(raw_file)
+            r_i = requests.post("https://api.imgbb.com/1/upload", 
+                               data={"key": IMGBB_API_KEY, "image": b64_file}, 
+                               timeout=20)
+            if r_i.status_code == 200:
+                link = r_i.json().get("data", {}).get("url")
+        except: pass
+            
+    return link
 
 # ==============================
 # 🤖 İŞLEM (ANİMASYONLU)
 # ==============================
 def islem_yap(message):
     try:
+        if message.date < BOT_START_TIME: return
+
         waiting = bot.reply_to(message, "⌛")
         file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
         is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
         
         file_info = bot.get_file(file_id)
         raw = bot.download_file(file_info.file_path)
+        
         link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
 
         markup = types.InlineKeyboardMarkup()
@@ -161,11 +177,13 @@ def worker():
         finally: task_queue.task_done()
 
 @bot.message_handler(content_types=['photo','document'])
-def handle(m): task_queue.put(m)
+def handle(m):
+    if m.date >= BOT_START_TIME:
+        task_queue.put(m)
 
 if __name__ == "__main__":
     Thread(target=run_web, daemon=True).start()
     for _ in range(3): Thread(target=worker, daemon=True).start()
-    print("RENDER ÜZERİNDE AKTİF!")
-    bot.infinity_polling(timeout=20, long_polling_timeout=10)
+    print("SİSTEM AKTİF: PIXELDRAIN + IMGBB")
+    bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
     
