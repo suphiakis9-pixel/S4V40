@@ -12,13 +12,11 @@ def home(): return f"Bot Aktif! {time.strftime('%H:%M:%S')}"
 
 def run_web():
     try:
-        # Render port ayarı (Varsayılan 7860 veya 10000)
         port = int(os.environ.get('PORT', 7860))
         app.run(host='0.0.0.0', port=port)
     except: pass
 
 def keep_alive():
-    """Botu uyanık tutmak için 30 saniyede bir kendi Flask sunucusunu dürter"""
     while True:
         try:
             port = os.environ.get('PORT', '7860')
@@ -26,7 +24,6 @@ def keep_alive():
         except: pass
         time.sleep(30)
 
-# TOKEN VE API BİLGİLERİ
 API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14"
 PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9"
 
@@ -34,7 +31,7 @@ bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (STABİL VERSİYON)
+# 🧠 v32 ANALİZ MOTORU (ZİRAAT GÜNCELLEMELİ)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -93,11 +90,12 @@ def analiz_et_v32(file_bytes):
             elif "ADI SOYADI" in l_up and i < 10:
                 res = ismi_temizle(l_up); g = res if res else g
 
-            # ALICI ANALİZİ (Ziraat ve DenizBank hibrit)
+            # ALICI ANALİZİ (ZİRAAT ÖZEL AYAR ÇEKİLDİ)
             if "ALICI:" in l_up:
-                # Satırı temizleyip TR/IBAN/HESAP kelimelerinden öncesini ayıklar
-                parca = l_up.split("ALICI:")[1].split("TR")[0].split("HESAP")[0].strip()
-                res = ismi_temizle(parca)
+                # Alıcıdan sonra gelen IBAN (TR...), Hesap veya Nokta gibi bölümleri temizler
+                temiz_satir = l_up.split("ALICI:")[1]
+                temiz_satir = re.split(r'TR\d+|HESAP|ŞUBE|:|;', temiz_satir)[0].strip()
+                res = ismi_temizle(temiz_satir)
                 if res: a = res
             elif "ALICI ADI SOYADI" in l_up:
                 res = ismi_temizle(l_up)
@@ -121,7 +119,6 @@ def analiz_et_v32(file_bytes):
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
-    # 1. Pixeldrain
     try:
         r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), 
                           files={"file": (fn, io.BytesIO(raw_file))}, timeout=10)
@@ -129,7 +126,6 @@ def dosya_yukle_yedekli(raw_file, uzanti):
             d = r.json()
             if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
     except: pass
-    # 2. Catbox (Yedek)
     try:
         r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, 
                             files={"fileToUpload": (fn, io.BytesIO(raw_file))}, timeout=12)
@@ -181,6 +177,6 @@ if __name__ == "__main__":
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive, daemon=True).start()
     for _ in range(2): Thread(target=worker, daemon=True).start()
-    print("BOT AKTİF - STABİL v32")
+    print("BOT AKTİF - ZİRAAT ALICI DESTEĞİ EKLENDİ")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
-    
+            
