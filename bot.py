@@ -12,13 +12,13 @@ def home(): return f"Bot Aktif! {time.strftime('%H:%M:%S')}"
 
 def run_web():
     try:
-        # Render için port ayarı
+        # Render port ayarı (Varsayılan 7860 veya 10000)
         port = int(os.environ.get('PORT', 7860))
         app.run(host='0.0.0.0', port=port)
     except: pass
 
 def keep_alive():
-    """Botu uyanık tutmak için 30 saniyede bir ping atar"""
+    """Botu uyanık tutmak için 30 saniyede bir kendi Flask sunucusunu dürter"""
     while True:
         try:
             port = os.environ.get('PORT', '7860')
@@ -26,7 +26,7 @@ def keep_alive():
         except: pass
         time.sleep(30)
 
-# TOKEN VE API AYARLARI
+# TOKEN VE API BİLGİLERİ
 API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14"
 PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9"
 
@@ -34,7 +34,7 @@ bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (GÜÇLENDİRİLMİŞ)
+# 🧠 v32 ANALİZ MOTORU (STABİL VERSİYON)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -86,17 +86,16 @@ def analiz_et_v32(file_bytes):
         for i, l in enumerate(lns):
             l_up = l.upper()
             
-            # GÖNDEREN YAKALAMA
+            # GÖNDEREN ANALİZİ
             if "GÖNDEREN:" in l_up:
                 res = ismi_temizle(l_up.split("GÖNDEREN:")[1].split("AÇIKLAMA:")[0].strip())
                 if res: g = res
             elif "ADI SOYADI" in l_up and i < 10:
-                res = ismi_temizle(l_up)
-                if res: g = res
+                res = ismi_temizle(l_up); g = res if res else g
 
-            # ALICI YAKALAMA (ZİRAAT GÜNCELLEMESİ)
+            # ALICI ANALİZİ (Ziraat ve DenizBank hibrit)
             if "ALICI:" in l_up:
-                # TR veya Hesap No gibi kelimelerden öncesini keserek ismi ayıklar
+                # Satırı temizleyip TR/IBAN/HESAP kelimelerinden öncesini ayıklar
                 parca = l_up.split("ALICI:")[1].split("TR")[0].split("HESAP")[0].strip()
                 res = ismi_temizle(parca)
                 if res: a = res
@@ -108,7 +107,6 @@ def analiz_et_v32(file_bytes):
                 res = ismi_temizle(l_up.split("ALICI ÜNVANI:")[1].split("ALICI IBAN:")[0].strip())
                 if res: a = res
             
-            # SAYIN FİLTRESİ
             if "SAYIN" in l_up and g == "Bilinmiyor":
                 comb = l_up.replace("SAYIN", "").strip()
                 if i+1 < len(lns): comb += " " + lns[i+1].upper()
@@ -119,28 +117,28 @@ def analiz_et_v32(file_bytes):
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# ☁️ YEDEKLİ YÜKLEME (Öncelik: Pixeldrain)
+# ☁️ YÜKLEME (Pixeldrain Öncelikli)
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
+    # 1. Pixeldrain
     try:
-        r = requests.post("https://pixeldrain.com/api/file", 
-                          auth=("", PIXELDRAIN_API_KEY), 
+        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), 
                           files={"file": (fn, io.BytesIO(raw_file))}, timeout=10)
         if r.status_code in [200, 201]:
             d = r.json()
             if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
     except: pass
+    # 2. Catbox (Yedek)
     try:
-        r_c = requests.post("https://catbox.moe/user/api.php", 
-                            data={"reqtype": "fileupload"}, 
+        r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, 
                             files={"fileToUpload": (fn, io.BytesIO(raw_file))}, timeout=12)
         if r_c.status_code == 200: return r_c.text.strip()
     except: pass
     return None
 
 # ==============================
-# 🤖 İŞLEM
+# 🤖 BOT İŞLEMLERİ
 # ==============================
 def islem_yap(message):
     try:
@@ -177,13 +175,12 @@ def worker():
 def handle(m): task_queue.put(m)
 
 if __name__ == "__main__":
-    try:
-        bot.delete_webhook()
+    try: bot.delete_webhook()
     except: pass
     
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive, daemon=True).start()
     for _ in range(2): Thread(target=worker, daemon=True).start()
-    print("BOT AKTİF - ZİRAAT ALICI DESTEĞİ EKLENDİ")
+    print("BOT AKTİF - STABİL v32")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
-        
+    
