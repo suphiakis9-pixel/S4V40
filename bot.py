@@ -31,13 +31,14 @@ bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU
+# 🧠 v32 ANALİZ MOTORU (SAYI VE İSİM AYARI)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
 
 def parse_number(text):
     if not text: return None
+    # Sayı haricindeki her şeyi temizle, boşlukları kaldır
     text = re.sub(r'[^0-9,.]', '', text.replace(" ", ""))
     if text.count(",") > 0 and text.count(".") == 0: text = text.replace(",", "")
     elif text.count(".") > 0 and text.count(",") == 0: text = text.replace(".", "")
@@ -52,11 +53,13 @@ def ismi_temizle(metin):
     t = re.sub(r'(SAYIN|ALACAKLI|GÖNDEREN|ALICI|MÜŞTERİ|ÜNVANI|ALACAKLI ADI SOYADI|ADI SOYADI|AD SOYAD|ADI|ALICI ADI SOYADI)\s*[:]*', '', metin.upper())
     t = CLEAN_RE.sub(' ', re.sub(r'\d+', '', t))
     parcalar = [x for x in t.split() if x not in YASAKLI and len(x) > 1]
+    # Banka isimleri gibi hatalı eşleşmeleri engelle
     if any(k in t for k in ["ŞUBE","MÜDÜRLÜĞÜ","VALÖR","A.Ş.","BANKASI"]): return None
     if len(parcalar) >= 2: return " ".join(parcalar[:3])
     return None
 
 def tutar_bul_final(full_text):
+    # v32 Tutma kalıpları
     patterns = [
         r'(?:TL|TUTARI|TUTAR|Tutar)\s*[:]*\s*([\d.,]{4,20})', 
         r'B\s+TL\s+([\d.,]{4,20})', 
@@ -69,6 +72,7 @@ def tutar_bul_final(full_text):
         for val_str in m:
             val = parse_number(val_str)
             if val and 5 < val < 10000000:
+                # v32 formatında geri döndür (binlik nokta, kuruş virgül)
                 return "{:,.2f}".format(val).replace(',', 'X').replace('.', ',').replace('X', '.') + " TRY"
     return "Bulunamadı"
 
@@ -82,6 +86,7 @@ def analiz_et_v32(file_bytes):
         
         for i, l in enumerate(lns):
             l_up = l.upper()
+            # Gönderen ve Alıcı yakalama v32 mantığı
             if "ADI SOYADI" in l_up and i < 10:
                 res = ismi_temizle(l_up)
                 if res: g = res
@@ -95,6 +100,11 @@ def analiz_et_v32(file_bytes):
             elif "ALICI ÜNVANI:" in l_up:
                 res = ismi_temizle(l_up.split("ALICI ÜNVANI:")[1].split("ALICI IBAN:")[0].strip())
                 if res: a = res
+            if "SAYIN" in l_up:
+                comb = l_up.replace("SAYIN", "").strip()
+                if i+1 < len(lns): comb += " " + lns[i+1].upper()
+                res = ismi_temizle(comb)
+                if res and g == "Bilinmiyor": g = res
         return g, a, tutar_bul_final(txt)
     except: return "Hata","Hata","Bulunamadı"
 
@@ -157,8 +167,7 @@ def worker():
 def handle(m): task_queue.put(m)
 
 if __name__ == "__main__":
-    try:
-        bot.delete_webhook()
+    try: bot.delete_webhook()
     except: pass
     
     Thread(target=run_web, daemon=True).start()
@@ -166,4 +175,4 @@ if __name__ == "__main__":
     for _ in range(2): Thread(target=worker, daemon=True).start()
     print("BOT AKTİF")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
-        
+    
