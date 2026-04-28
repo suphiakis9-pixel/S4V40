@@ -14,7 +14,6 @@ def home():
 
 def run_web():
     try:
-        # Render'ın atadığı portu yakalar
         port = int(os.environ.get('PORT', 7860))
         app.run(host='0.0.0.0', port=port)
     except: 
@@ -23,7 +22,6 @@ def run_web():
 def keep_alive():
     while True:
         try:
-            # Sunucuyu canlı tutmak için iç ping
             port = os.environ.get('PORT', '7860')
             requests.get(f"http://127.0.0.1:{port}/", timeout=10)
         except: 
@@ -33,14 +31,14 @@ def keep_alive():
 # ==============================
 # 🔑 API ANAHTARLARI
 # ==============================
-API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14"
+API_TOKEN = "8724856310:AAF855MBqFLSDHITFsfCFryfgg3oCh0YE_Q"
 PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU
+# 🧠 v32 ANALİZ MOTORU (Geliştirilmiş)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -72,7 +70,8 @@ def tutar_bul_final(full_text):
         r'İŞLEM TUTARI\s*\(TL\)\s*:\s*([\d.,]{4,20})', 
         r'Havale Tutarı\s*:\s*([\d.,]{4,20})',
         r'Tutar\s*([\d.,]{4,20})\s*TL',
-        r'İşlem Tutarı\s*:\s*([\d.,]{4,20})'
+        r'İşlem Tutarı\s*:\s*([\d.,]{4,20})',
+        r'EFT TUTARI\s*:\s*([\d.,]{4,20})'
     ]
     for p in patterns:
         m = re.findall(p, full_text, re.IGNORECASE)
@@ -101,18 +100,26 @@ def analiz_et_v32(file_bytes):
                 res = ismi_temizle(l_up.split("GÖNDEREN:")[1].split("AÇIKLAMA:")[0].strip())
                 if res: g = res
             
-            # ALICI TESPİTİ
-            if "ALICI ADI SOYADI" in l_up or "ALICI HESAP" in l_up or "ALICI:" in l_up:
+            # ALICI TESPİTİ (Enpara ve Diğerleri İçin Güçlendirildi)
+            if any(k in l_up for k in ["ALICI ADI SOYADI", "ALICI HESAP", "ALICI:", "ALICI ÜNVANI"]):
                 res = ismi_temizle(l_up)
+                
+                # Eğer satırda "ALICI ÜNVANI" varsa ve temizlenemediyse özel parçala
+                if "ALICI ÜNVANI:" in l_up and (not res or len(res.split()) < 2):
+                    parca = l_up.split("ALICI ÜNVANI:")[1].split("ALICI IBAN")[0].strip()
+                    res = ismi_temizle(parca)
+
+                # Alt satıra kayma durumları (Ziraat vb.)
                 if (not res or len(res.split()) < 2) and i+1 < len(lns): 
                     res = ismi_temizle(lns[i+1])
+                
                 if res: a = res
                 
             if "ALACAKLI ADI SOYADI" in l_up and ":" in l_up:
                 res = ismi_temizle(l_up.split(":")[1].strip())
                 if res: a = res
 
-            # SAYIN BLOĞU
+            # GÖNDEREN ALTERNATİF (SAYIN BLOĞU)
             if "SAYIN" in l_up and g == "Bilinmiyor":
                 comb = l_up.replace("SAYIN", "").strip()
                 if i+1 < len(lns): comb += " " + lns[i+1].upper()
@@ -128,21 +135,17 @@ def analiz_et_v32(file_bytes):
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
-    # 1. Pixeldrain Denemesi
     try:
         r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=10)
         if r.status_code in [200, 201]:
             d = r.json()
             if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
-    except: 
-        pass
+    except: pass
     
-    # 2. Catbox Yedek Denemesi
     try:
         r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=12)
         if r_c.status_code == 200: return r_c.text.strip()
-    except: 
-        pass
+    except: pass
     return None
 
 # ==============================
@@ -170,22 +173,17 @@ def islem_yap(message):
             msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Alınamadı'}`"
 
         bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
-    except: 
-        pass
+    except: pass
 
 def worker():
     while True:
         m = task_queue.get()
-        try: 
-            islem_yap(m)
-        except: 
-            pass
-        finally: 
-            task_queue.task_done()
+        try: islem_yap(m)
+        except: pass
+        finally: task_queue.task_done()
 
 @bot.message_handler(content_types=['photo','document'])
-def handle(m): 
-    task_queue.put(m)
+def handle(m): task_queue.put(m)
 
 # ==============================
 # 🚀 ÇALIŞTIRMA
@@ -193,17 +191,11 @@ def handle(m):
 if __name__ == "__main__":
     try:
         bot.delete_webhook()
-    except: 
-        pass
+    except: pass
     
-    # Web sunucusu ve ping servisini başlat
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive, daemon=True).start()
+    for _ in range(2): Thread(target=worker, daemon=True).start()
     
-    # İşçi thread'leri başlat
-    for _ in range(2): 
-        Thread(target=worker, daemon=True).start()
-    
-    print("BOT AKTİF - TÜM MANTIK GÜNCELLENDİ")
+    print("BOT AKTİF - ENPARA GÜNCELLEMESİ DAHİL")
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
-            
