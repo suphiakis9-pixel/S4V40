@@ -1,50 +1,37 @@
-import telebot, requests, io, pypdf, re, time, queue, os, base64
+import telebot, requests, io, pypdf, re, time, queue, os
 from flask import Flask
 from threading import Thread
 from telebot import types
 
 # ==============================
-# ⚙️ SUNUCU VE İÇ DÜRTME SİSTEMİ
+# ⚙️ SUNUCU VE AYARLAR
 # ==============================
 app = Flask('')
-
 @app.route('/')
-def home(): 
-    return f"Sistem Canlı - {time.strftime('%H:%M:%S')}"
-
-@app.route('/durt')
-def durt():
-    return "Dürtme Başarılı", 200
+def home(): return f"Bot Aktif! {time.strftime('%H:%M:%S')}"
 
 def run_web():
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    try:
+        port = int(os.environ.get('PORT', 7860))
+        app.run(host='0.0.0.0', port=port)
+    except: pass
 
-# --- İÇTEN DÜRTME MOTORU ---
-def icten_durtme():
-    """Botu uyutmamak için her 5 dakikada bir içten sinyal gönderir."""
+def keep_alive():
     while True:
         try:
-            # Dışarıdan linke gerek kalmadan lokal sunucuyu dürter
-            requests.get("http://127.0.0.1:10000/durt", timeout=5)
-            print(f"[{time.strftime('%H:%M:%S')}] İç Dürtme: Bot tetiklendi.")
-        except:
-            pass
-        time.sleep(300) # Her 5 dakikada bir (300 saniye)
+            port = os.environ.get('PORT', '7860')
+            requests.get(f"http://127.0.0.1:{port}/", timeout=10)
+        except: pass
+        time.sleep(30)
 
-# ==============================
-# 🔑 TOKENS & CONFIG
-# ==============================
 API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14"
 PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9"
-IMGBB_API_KEY = "810e9541310aca8c085c9cd259179384"
 
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=10)
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=5)
 task_queue = queue.Queue()
-BOT_START_TIME = time.time()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (KORUNDU)
+# 🧠 v32 ANALİZ MOTORU
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -92,10 +79,12 @@ def analiz_et_v32(file_bytes):
         for page in pdf.pages: txt += page.extract_text() + "\n"
         lns = [l.strip() for l in txt.split('\n') if l.strip()]
         g, a = "Bilinmiyor", "Bilinmiyor"
+        
         for i, l in enumerate(lns):
             l_up = l.upper()
             if "ADI SOYADI" in l_up and i < 10:
-                res = ismi_temizle(l_up); g = res if res else g
+                res = ismi_temizle(l_up)
+                if res: g = res
             if "ALICI ADI SOYADI" in l_up:
                 res = ismi_temizle(l_up)
                 if not res and i+1 < len(lns): res = ismi_temizle(lns[i+1])
@@ -106,65 +95,54 @@ def analiz_et_v32(file_bytes):
             elif "ALICI ÜNVANI:" in l_up:
                 res = ismi_temizle(l_up.split("ALICI ÜNVANI:")[1].split("ALICI IBAN:")[0].strip())
                 if res: a = res
-            if "ALACAKLI ADI SOYADI" in l_up and ":" in l_up:
-                res = ismi_temizle(l_up.split(":")[1].strip())
-                if res: a = res
-            if "SAYIN" in l_up:
-                comb = l_up.replace("SAYIN", "").strip()
-                if i+1 < len(lns): comb += " " + lns[i+1].upper()
-                res = ismi_temizle(comb)
-                if res and g == "Bilinmiyor": g = res
-            if g == "Bilinmiyor" and any(k in l_up for k in ["GÖNDEREN","AD SOYAD"]):
-                res = ismi_temizle(l)
-                if not res and i+1 < len(lns): res = ismi_temizle(lns[i+1])
-                if res: g = res
-            if a == "Bilinmiyor" and any(k in l_up for k in ["ALICI","LEHTAR","ÜNVANI"]):
-                if "BANKACILIĞI" not in l_up:
-                    res = ismi_temizle(l)
-                    if not res and i+1 < len(lns): res = ismi_temizle(lns[i+1])
-                    if res: a = res
         return g, a, tutar_bul_final(txt)
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# ☁️ YÜKLEME (PIXELDRAIN + IMGBB)
+# ☁️ YEDEKLİ YÜKLEME (Öncelik: Pixeldrain)
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
-    link = None
-    fn = f"doc_{int(time.time())}{uzanti}"
+    fn = f"is_f_{int(time.time())}{uzanti}"
     try:
-        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, io.BytesIO(raw_file))}, timeout=15)
+        r = requests.post("https://pixeldrain.com/api/file", 
+                          auth=("", PIXELDRAIN_API_KEY), 
+                          files={"file": (fn, io.BytesIO(raw_file))}, timeout=10)
         if r.status_code in [200, 201]:
             d = r.json()
-            if d.get("id"): link = f"https://pixeldrain.com/api/file/{d.get('id')}"
+            if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
     except: pass
-    if not link:
-        try:
-            b64_file = base64.b64encode(raw_file)
-            r_i = requests.post("https://api.imgbb.com/1/upload", data={"key": IMGBB_API_KEY, "image": b64_file}, timeout=20)
-            if r_i.status_code == 200: link = r_i.json().get("data", {}).get("url")
-        except: pass
-    return link
+    try:
+        r_c = requests.post("https://catbox.moe/user/api.php", 
+                            data={"reqtype": "fileupload"}, 
+                            files={"fileToUpload": (fn, io.BytesIO(raw_file))}, timeout=12)
+        if r_c.status_code == 200: return r_c.text.strip()
+    except: pass
+    return None
 
 # ==============================
-# 🤖 İŞLEM VE KUYRUK
+# 🤖 İŞLEM
 # ==============================
 def islem_yap(message):
     try:
-        if message.date < BOT_START_TIME: return
         waiting = bot.reply_to(message, "⌛")
         file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
         is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
+        
         file_info = bot.get_file(file_id)
         raw = bot.download_file(file_info.file_path)
         link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
+
         markup = types.InlineKeyboardMarkup()
         if link: markup.add(types.InlineKeyboardButton("👁‍🗨 Görüntüle", url=link))
+
         if is_pdf:
             g, a, t = analiz_et_v32(raw)
-            msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata'}`")
+            msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n"
+                   f"👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata'}`")
         else:
             msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Alınamadı'}`"
+
         bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
     except: pass
 
@@ -176,13 +154,16 @@ def worker():
         finally: task_queue.task_done()
 
 @bot.message_handler(content_types=['photo','document'])
-def handle(m):
-    if m.date >= BOT_START_TIME: task_queue.put(m)
+def handle(m): task_queue.put(m)
 
 if __name__ == "__main__":
+    try:
+        bot.delete_webhook()
+    except: pass
+    
     Thread(target=run_web, daemon=True).start()
-    Thread(target=icten_durtme, daemon=True).start() # İç dürtme motoru başlatıldı
-    for _ in range(3): Thread(target=worker, daemon=True).start()
-    print("BOT AKTİF - İÇ DÜRTME SİSTEMİ DEVREDE")
-    bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
-                                  
+    Thread(target=keep_alive, daemon=True).start()
+    for _ in range(2): Thread(target=worker, daemon=True).start()
+    print("BOT AKTİF")
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+        
