@@ -4,7 +4,7 @@ from threading import Thread
 from telebot import types
 
 # ==============================
-# ⚙️ MAX ÖNLEM: KESİNTİSİZ SUNUCU
+# ⚙️ SUNUCU VE AKTİF TUTMA (HATA GİDERİLDİ)
 # ==============================
 app = Flask('')
 @app.route('/')
@@ -12,26 +12,26 @@ def home(): return f"Sistem Durumu: ÇOK AKTİF - {time.strftime('%H:%M:%S')}"
 
 def run_web():
     try:
+        # Pydroid ve Render çakışmalarını önlemek için port kontrolü
         port = int(os.environ.get('PORT', 7860))
-        app.run(host='0.0.0.0', port=port)
-    except: pass
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    except Exception as e:
+        print(f"Sunucu Hatası: {e}")
 
 def keep_alive_agresif():
-    """Botu uyutmamak için en yüksek düzeyde ping sistemi"""
     while True:
         try:
             port = os.environ.get('PORT', '7860')
-            # Hem yerel hem dış hat üzerinden botu sürekli dürter
             requests.get(f"http://127.0.0.1:{port}/", timeout=5)
         except: pass
-        time.sleep(10) # 10 saniyeye düşürüldü (Maksimum Aktiflik)
+        time.sleep(15)
 
 # 🔑 API AYARLARI
 API_TOKEN = "8724856310:AAF855MBqFLSDHITFsfCFryfgg3oCh0YE_Q"
 PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
 
-# Bağlantı kapasitesini en üst seviyeye taşıdık
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
+# Bot bağlantı kapasitesi maksimize edildi
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=35)
 task_queue = queue.Queue()
 
 # ==============================
@@ -165,7 +165,7 @@ def handle(m):
     task_queue.put(m)
 
 # ==============================
-# 🚀 ANA ÇALIŞTIRICI (MAX GÜVENLİK)
+# 🚀 BAŞLATICI (DÜZELTİLDİ)
 # ==============================
 if __name__ == "__main__":
     try: bot.delete_webhook()
@@ -174,20 +174,17 @@ if __name__ == "__main__":
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive_agresif, daemon=True).start()
     
-    # Birikenleri 5'er 5'er işler (Süper Hız)
     for _ in range(5):
         Thread(target=worker, daemon=True).start()
     
     while True:
         try:
-            # skip_pending=False: Bot uyanınca Telegram'daki tüm geçmişi zorla çeker
+            # Hatalı olan 'non_stop' parametresi kaldırıldı, infinity_polling zaten bunu yapar.
             bot.infinity_polling(
                 timeout=30, 
                 long_polling_timeout=25, 
-                skip_pending=False, 
-                non_stop=True
+                skip_pending=False
             )
         except Exception as e:
-            # Hata durumunda 3 saniye içinde sistemi resetler
-            time.sleep(3)
-        
+            time.sleep(5)
+    
