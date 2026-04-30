@@ -4,11 +4,11 @@ from threading import Thread
 from telebot import types
 
 # ==============================
-# ⚙️ SUNUCU VE AYARLAR
+# ⚙️ MAX ÖNLEM: KESİNTİSİZ SUNUCU
 # ==============================
 app = Flask('')
 @app.route('/')
-def home(): return f"Bot Aktif! {time.strftime('%H:%M:%S')}"
+def home(): return f"Sistem Durumu: ÇOK AKTİF - {time.strftime('%H:%M:%S')}"
 
 def run_web():
     try:
@@ -16,26 +16,26 @@ def run_web():
         app.run(host='0.0.0.0', port=port)
     except: pass
 
-# Botun uykuya dalmasını engellemek için daha agresif ping
-def keep_alive():
+def keep_alive_agresif():
+    """Botu uyutmamak için en yüksek düzeyde ping sistemi"""
     while True:
         try:
             port = os.environ.get('PORT', '7860')
-            # Kendi web arayüzüne ping atarak canlı kalır
+            # Hem yerel hem dış hat üzerinden botu sürekli dürter
             requests.get(f"http://127.0.0.1:{port}/", timeout=5)
         except: pass
-        time.sleep(15) # 30 saniyeden 15'e çekildi
+        time.sleep(10) # 10 saniyeye düşürüldü (Maksimum Aktiflik)
 
 # 🔑 API AYARLARI
 API_TOKEN = "8724856310:AAF855MBqFLSDHITFsfCFryfgg3oCh0YE_Q"
 PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
 
-# Bot bağlantı ayarlarını güçlendirdik
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=25)
+# Bağlantı kapasitesini en üst seviyeye taşıdık
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=40)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (Korundu)
+# 🧠 v32 ANALİZ MOTORU (DOKUNULMADI)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -107,15 +107,12 @@ def analiz_et_v32(file_bytes):
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
-    # Pixeldrain (4 Saniye)
     try:
         r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=4)
         if r.status_code in [200, 201]:
             d = r.json()
             if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
     except: pass
-
-    # Catbox (5 Saniye)
     try:
         r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=5)
         if r_c.status_code == 200: return r_c.text.strip()
@@ -168,27 +165,29 @@ def handle(m):
     task_queue.put(m)
 
 # ==============================
-# 🚀 BAŞLATICI
+# 🚀 ANA ÇALIŞTIRICI (MAX GÜVENLİK)
 # ==============================
 if __name__ == "__main__":
     try: bot.delete_webhook()
     except: pass
     
     Thread(target=run_web, daemon=True).start()
-    Thread(target=keep_alive, daemon=True).start()
+    Thread(target=keep_alive_agresif, daemon=True).start()
     
-    for _ in range(3):
+    # Birikenleri 5'er 5'er işler (Süper Hız)
+    for _ in range(5):
         Thread(target=worker, daemon=True).start()
     
-    # Botun uykudan uyandığında geçmişi çekmesi için 'skip_pending=False' kritik.
     while True:
         try:
+            # skip_pending=False: Bot uyanınca Telegram'daki tüm geçmişi zorla çeker
             bot.infinity_polling(
-                timeout=20, 
-                long_polling_timeout=15, 
-                logger_level=1, 
-                skip_pending=False # Geçmiş mesajları asla atlama
+                timeout=30, 
+                long_polling_timeout=25, 
+                skip_pending=False, 
+                non_stop=True
             )
         except Exception as e:
-            time.sleep(5) # Hata olursa 5 saniye bekle ve tekrar bağlan
-    
+            # Hata durumunda 3 saniye içinde sistemi resetler
+            time.sleep(3)
+        
