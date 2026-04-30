@@ -28,11 +28,12 @@ def keep_alive():
 API_TOKEN = "8724856310:AAF855MBqFLSDHITFsfCFryfgg3oCh0YE_Q"
 PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
 
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=10)
+# Thread sayısını artırarak paralel işlem gücünü koruyoruz
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=20)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU
+# 🧠 v32 ANALİZ MOTORU (Korundu)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -100,29 +101,24 @@ def analiz_et_v32(file_bytes):
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# ☁️ BULUT YÜKLEME (5sn PIXELDRAIN KURALI)
+# ☁️ BULUT YÜKLEME
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
-    # 1. Pixeldrain (Sıkı 5 Saniye Sınırı)
     try:
         r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=5)
         if r.status_code in [200, 201]:
             d = r.json()
             if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
-    except:
-        pass # Zaman aşımı veya hata olursa hemen alt satıra geçer
-
-    # 2. Catbox (Yedek - 7 Saniye Sınırı)
+    except: pass
     try:
         r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=7)
         if r_c.status_code == 200: return r_c.text.strip()
-    except:
-        pass
+    except: pass
     return None
 
 # ==============================
-# ⚙️ İŞLEM YÖNETİCİSİ
+# ⚙️ İŞLEM YÖNETİCİSİ (Hiçbir Mesajı Atlamaz)
 # ==============================
 def islem_yap(message):
     waiting = None
@@ -134,7 +130,6 @@ def islem_yap(message):
         file_info = bot.get_file(file_id)
         raw = bot.download_file(file_info.file_path)
         
-        # Önce analiz, sonra yükleme
         g, a, t = ("Görsel", "Görsel", "Yok") if not is_pdf else analiz_et_v32(raw)
         link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
 
@@ -149,24 +144,34 @@ def islem_yap(message):
             msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Link Alınamadı'}`"
 
         bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
-    except Exception as e:
-        if waiting: bot.edit_message_text(f"❌ İşlem Sırasında Hata Oluştu.", message.chat.id, waiting.message_id)
+    except:
+        if waiting:
+            try: bot.delete_message(message.chat.id, waiting.message_id)
+            except: pass
 
 def worker():
     while True:
         try:
+            # Artık kuyruk temizleme (task_queue.get_nowait) yok. 
+            # Bot uyanınca her şeyi sırayla işler.
             m = task_queue.get()
             islem_yap(m)
             task_queue.task_done()
-        except: pass
+        except:
+            time.sleep(1)
 
 @bot.message_handler(content_types=['photo','document'])
-def handle(m): task_queue.put(m)
+def handle(m):
+    task_queue.put(m)
 
 if __name__ == "__main__":
     try: bot.delete_webhook()
     except: pass
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive, daemon=True).start()
-    for _ in range(3): Thread(target=worker, daemon=True).start()
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    
+    # 3 paralel işçi ile biriken dekontları daha hızlı eritiyoruz.
+    for _ in range(3):
+        Thread(target=worker, daemon=True).start()
+    
+    bot.infinity_polling(timeout=15, long_polling_timeout=10)
