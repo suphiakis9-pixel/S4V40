@@ -16,20 +16,22 @@ def run_web():
         app.run(host='0.0.0.0', port=port)
     except: pass
 
+# Botun uykuya dalmasını engellemek için daha agresif ping
 def keep_alive():
     while True:
         try:
             port = os.environ.get('PORT', '7860')
-            requests.get(f"http://127.0.0.1:{port}/", timeout=10)
+            # Kendi web arayüzüne ping atarak canlı kalır
+            requests.get(f"http://127.0.0.1:{port}/", timeout=5)
         except: pass
-        time.sleep(30)
+        time.sleep(15) # 30 saniyeden 15'e çekildi
 
 # 🔑 API AYARLARI
 API_TOKEN = "8724856310:AAF855MBqFLSDHITFsfCFryfgg3oCh0YE_Q"
 PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
 
-# Thread sayısını artırarak paralel işlem gücünü koruyoruz
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=20)
+# Bot bağlantı ayarlarını güçlendirdik
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=25)
 task_queue = queue.Queue()
 
 # ==============================
@@ -105,20 +107,23 @@ def analiz_et_v32(file_bytes):
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
+    # Pixeldrain (4 Saniye)
     try:
-        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=5)
+        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=4)
         if r.status_code in [200, 201]:
             d = r.json()
             if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
     except: pass
+
+    # Catbox (5 Saniye)
     try:
-        r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=7)
+        r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=5)
         if r_c.status_code == 200: return r_c.text.strip()
     except: pass
     return None
 
 # ==============================
-# ⚙️ İŞLEM YÖNETİCİSİ (Hiçbir Mesajı Atlamaz)
+# ⚙️ İŞLEM YÖNETİCİSİ
 # ==============================
 def islem_yap(message):
     waiting = None
@@ -152,8 +157,6 @@ def islem_yap(message):
 def worker():
     while True:
         try:
-            # Artık kuyruk temizleme (task_queue.get_nowait) yok. 
-            # Bot uyanınca her şeyi sırayla işler.
             m = task_queue.get()
             islem_yap(m)
             task_queue.task_done()
@@ -164,14 +167,28 @@ def worker():
 def handle(m):
     task_queue.put(m)
 
+# ==============================
+# 🚀 BAŞLATICI
+# ==============================
 if __name__ == "__main__":
     try: bot.delete_webhook()
     except: pass
+    
     Thread(target=run_web, daemon=True).start()
     Thread(target=keep_alive, daemon=True).start()
     
-    # 3 paralel işçi ile biriken dekontları daha hızlı eritiyoruz.
     for _ in range(3):
         Thread(target=worker, daemon=True).start()
     
-    bot.infinity_polling(timeout=15, long_polling_timeout=10)
+    # Botun uykudan uyandığında geçmişi çekmesi için 'skip_pending=False' kritik.
+    while True:
+        try:
+            bot.infinity_polling(
+                timeout=20, 
+                long_polling_timeout=15, 
+                logger_level=1, 
+                skip_pending=False # Geçmiş mesajları asla atlama
+            )
+        except Exception as e:
+            time.sleep(5) # Hata olursa 5 saniye bekle ve tekrar bağlan
+    
