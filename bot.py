@@ -1,41 +1,33 @@
-import telebot, requests, io, pypdf, re, time, queue, os
+import telebot, requests, io, pypdf, re, time, queue, os, logging
 from flask import Flask
 from threading import Thread
 from telebot import types
 
-# ==============================
-# ⚙️ SUNUCU VE AKTİF TUTMA (HATA GİDERİLDİ)
-# ==============================
+# Detaylı loglama açık (Render loglarından takip edebilirsin)
+logging.basicConfig(level=logging.INFO)
+
 app = Flask('')
 @app.route('/')
-def home(): return f"Sistem Durumu: ÇOK AKTİF - {time.strftime('%H:%M:%S')}"
+def home(): 
+    return f"BOT DURUMU: %100 AKTİF - {time.strftime('%H:%M:%S')}"
 
 def run_web():
     try:
-        # Pydroid ve Render çakışmalarını önlemek için port kontrolü
         port = int(os.environ.get('PORT', 7860))
         app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
     except Exception as e:
-        print(f"Sunucu Hatası: {e}")
+        logging.error(f"Flask Hatası: {e}")
 
-def keep_alive_agresif():
-    while True:
-        try:
-            port = os.environ.get('PORT', '7860')
-            requests.get(f"http://127.0.0.1:{port}/", timeout=5)
-        except: pass
-        time.sleep(15)
-
-# 🔑 API AYARLARI
+# 🔑 GÜNCEL API AYARLARI
 API_TOKEN = "8724856310:AAEwgs3I7jXrKEJoiby9YrqnRKQ4pYBwXEE"
 PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
 
-# Bot bağlantı kapasitesi maksimize edildi
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=35)
+# Starter Plan için optimize edilmiş iş parçacığı sayısı
+bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=50)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (DOKUNULMADI)
+# 🧠 v32 ANALİZ MOTORU (KORUNDU)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -102,26 +94,20 @@ def analiz_et_v32(file_bytes):
         return g, a, tutar_bul_final(txt)
     except: return "Hata","Hata","Bulunamadı"
 
-# ==============================
-# ☁️ BULUT YÜKLEME
-# ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
     try:
-        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=4)
+        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=15)
         if r.status_code in [200, 201]:
             d = r.json()
             if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
     except: pass
     try:
-        r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=5)
+        r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=15)
         if r_c.status_code == 200: return r_c.text.strip()
     except: pass
     return None
 
-# ==============================
-# ⚙️ İŞLEM YÖNETİCİSİ
-# ==============================
 def islem_yap(message):
     waiting = None
     try:
@@ -146,7 +132,8 @@ def islem_yap(message):
             msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Link Alınamadı'}`"
 
         bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
-    except:
+    except Exception as e:
+        logging.error(f"İşlem Hatası: {e}")
         if waiting:
             try: bot.delete_message(message.chat.id, waiting.message_id)
             except: pass
@@ -164,27 +151,20 @@ def worker():
 def handle(m):
     task_queue.put(m)
 
-# ==============================
-# 🚀 BAŞLATICI (DÜZELTİLDİ)
-# ==============================
 if __name__ == "__main__":
     try: bot.delete_webhook()
     except: pass
     
     Thread(target=run_web, daemon=True).start()
-    Thread(target=keep_alive_agresif, daemon=True).start()
     
-    for _ in range(5):
+    for _ in range(8):
         Thread(target=worker, daemon=True).start()
     
     while True:
         try:
-            # Hatalı olan 'non_stop' parametresi kaldırıldı, infinity_polling zaten bunu yapar.
-            bot.infinity_polling(
-                timeout=30, 
-                long_polling_timeout=25, 
-                skip_pending=False
-            )
+            # AGRESİF POLLING: Bağlantıyı daha sık tazeler
+            bot.polling(none_stop=True, interval=0, timeout=20)
         except Exception as e:
+            logging.error(f"Bağlantı Hatası: {e}")
             time.sleep(5)
-    
+        
