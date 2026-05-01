@@ -27,7 +27,7 @@ def keep_alive_agresif():
         time.sleep(15)
 
 # 🔑 API AYARLARI
-API_TOKEN = "8724856310:AAF855MBqFLSDHITFsfCFryfgg3oCh0YE_Q"
+API_TOKEN = "8724856310:AAEwgs3I7jXrKEJoiby9YrqnRKQ4pYBwXEE"
 PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
 
 # Bot bağlantı kapasitesi maksimize edildi
