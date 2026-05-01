@@ -1,34 +1,30 @@
-import telebot, requests, io, pypdf, re, time, queue, os, logging
+import asyncio
+import io
+import re
+import time
+import os
+import logging
+import aiohttp
+import pypdf
 from flask import Flask
-from threading import Thread
+from telebot.async_telebot import AsyncTeleBot
 from telebot import types
+from threading import Thread
 
-# Detaylı loglama açık (Render loglarından takip edebilirsin)
-logging.basicConfig(level=logging.INFO)
+# Kritik hataları izlemek için sade loglama
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
-app = Flask('')
-@app.route('/')
-def home(): 
-    return f"BOT DURUMU: %100 AKTİF - {time.strftime('%H:%M:%S')}"
-
-def run_web():
-    try:
-        port = int(os.environ.get('PORT', 7860))
-        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-    except Exception as e:
-        logging.error(f"Flask Hatası: {e}")
-
-# 🔑 GÜNCEL API AYARLARI
+# --- KONFİGÜRASYON ---
 API_TOKEN = "8724856310:AAEwgs3I7jXrKEJoiby9YrqnRKQ4pYBwXEE"
 PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
+bot = AsyncTeleBot(API_TOKEN)
 
-# Starter Plan için optimize edilmiş iş parçacığı sayısı
-bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=50)
-task_queue = queue.Queue()
+# Flask (Render'ın portu açık tutması için)
+app = Flask('')
+@app.route('/')
+def home(): return "Sistem Aktif", 200
 
-# ==============================
-# 🧠 v32 ANALİZ MOTORU (KORUNDU)
-# ==============================
+# --- v32 ANALİZ MOTORU (MANTIĞI KORUNDU) ---
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
 
@@ -62,17 +58,34 @@ def tutar_bul_final(full_text):
                 return "{:,.2f}".format(val).replace(',', 'X').replace('.', ',').replace('X', '.') + " TRY"
     return "Bulunamadı"
 
-def analiz_et_v32(file_bytes):
+# --- ASYNC İŞLEMCİLER ---
+async def upload_file(raw_file, extension):
+    filename = f"up_{int(time.time())}{extension}"
+    async with aiohttp.ClientSession() as session:
+        try:
+            # Pixeldrain (Hızlı ve stabil)
+            auth = aiohttp.BasicAuth("", PIXELDRAIN_API_KEY)
+            data = aiohttp.FormData()
+            data.add_field('file', raw_file, filename=filename)
+            async with session.post("https://pixeldrain.com/api/file", data=data, auth=auth, timeout=15) as r:
+                if r.status == 200 or r.status == 201:
+                    res = await r.json()
+                    return f"https://pixeldrain.com/api/file/{res.get('id')}"
+        except: pass
+    return None
+
+def process_pdf_blocking(file_bytes):
+    """CPU tüketen bu fonksiyonu executor ile çalıştırıyoruz"""
     try:
         pdf = pypdf.PdfReader(io.BytesIO(file_bytes))
         txt = ""
-        for page in pdf.pages: txt += page.extract_text() + "\n"
+        for page in pdf.pages: txt += (page.extract_text() or "") + "\n"
         lns = [l.strip() for l in txt.split('\n') if l.strip()]
         g, a = "Bilinmiyor", "Bilinmiyor"
         for i, l in enumerate(lns):
             l_up = l.upper()
             if "ADI SOYADI" in l_up and i < 10:
-                res = ismi_temizle(l_up); 
+                res = ismi_temizle(l_up)
                 if res: g = res
             if "GÖNDEREN:" in l_up:
                 res = ismi_temizle(l_up.split("GÖNDEREN:")[1].split("AÇIKLAMA:")[0].strip())
@@ -92,79 +105,72 @@ def analiz_et_v32(file_bytes):
                 res = ismi_temizle(comb)
                 if res: g = res
         return g, a, tutar_bul_final(txt)
-    except: return "Hata","Hata","Bulunamadı"
+    except Exception as e:
+        logging.error(f"PDF Analiz Hatası: {e}")
+        return "Hata", "Hata", "Bulunamadı"
 
-def dosya_yukle_yedekli(raw_file, uzanti):
-    fn = f"is_f_{int(time.time())}{uzanti}"
+@bot.message_handler(content_types=['photo', 'document'])
+async def handle_docs(message):
+    waiting = await bot.reply_to(message, "⌛")
     try:
-        r = requests.post("https://pixeldrain.com/api/file", auth=("", PIXELDRAIN_API_KEY), files={"file": (fn, raw_file)}, timeout=15)
-        if r.status_code in [200, 201]:
-            d = r.json()
-            if d.get("id"): return f"https://pixeldrain.com/api/file/{d.get('id')}"
-    except: pass
-    try:
-        r_c = requests.post("https://catbox.moe/user/api.php", data={"reqtype": "fileupload"}, files={"fileToUpload": (fn, raw_file)}, timeout=15)
-        if r_c.status_code == 200: return r_c.text.strip()
-    except: pass
-    return None
+        if message.content_type == 'photo':
+            file_id = message.photo[-1].file_id
+            ext = ".jpg"
+            is_pdf = False
+        else:
+            if not message.document.file_name.lower().endswith('.pdf'): return
+            file_id = message.document.file_id
+            ext = ".pdf"
+            is_pdf = True
 
-def islem_yap(message):
-    waiting = None
-    try:
-        waiting = bot.reply_to(message, "⌛")
-        file_id = message.photo[-1].file_id if message.content_type == 'photo' else message.document.file_id
-        is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith(".pdf")
+        # Dosyayı indir
+        file_info = await bot.get_file(file_id)
+        downloaded_file = await bot.download_file(file_info.file_path)
+
+        # Analiz (Bloklamayı önlemek için executor kullanıyoruz)
+        if is_pdf:
+            loop = asyncio.get_event_loop()
+            g, a, t = await loop.run_in_executor(None, process_pdf_blocking, downloaded_file)
+        else:
+            g, a, t = "Görsel", "Görsel", "Yok"
+
+        # Yükleme (Async)
+        link = await upload_file(downloaded_file, ext)
         
-        file_info = bot.get_file(file_id)
-        raw = bot.download_file(file_info.file_path)
-        
-        g, a, t = ("Görsel", "Görsel", "Yok") if not is_pdf else analiz_et_v32(raw)
-        link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
-
         markup = types.InlineKeyboardMarkup()
         if link: markup.add(types.InlineKeyboardButton("👁‍🗨 Görüntüle", url=link))
 
         if is_pdf:
             msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n"
                    f"👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Link Alınamadı'}`")
+                   f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata'}`")
         else:
-            msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Link Alınamadı'}`"
+            msg = f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Hata'}`"
 
-        bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
+        await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
     except Exception as e:
-        logging.error(f"İşlem Hatası: {e}")
-        if waiting:
-            try: bot.delete_message(message.chat.id, waiting.message_id)
-            except: pass
+        logging.error(f"Genel İşlem Hatası: {e}")
+        await bot.delete_message(message.chat.id, waiting.message_id)
 
-def worker():
+# --- RUNTIME ---
+def start_flask():
+    port = int(os.environ.get('PORT', 7860))
+    app.run(host='0.0.0.0', port=port)
+
+async def main():
+    # Flask'ı ayrı bir thread'de başlat
+    Thread(target=start_flask, daemon=True).start()
+    
+    # Botu başlat
+    print("Bot başlatılıyor...")
     while True:
         try:
-            m = task_queue.get()
-            islem_yap(m)
-            task_queue.task_done()
-        except:
-            time.sleep(1)
-
-@bot.message_handler(content_types=['photo','document'])
-def handle(m):
-    task_queue.put(m)
+            # infinity_polling asenkron yapıda daha stabildir
+            await bot.infinity_polling(timeout=60, request_timeout=60)
+        except Exception as e:
+            logging.error(f"Polling koptu, yeniden deneniyor: {e}")
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    try: bot.delete_webhook()
-    except: pass
-    
-    Thread(target=run_web, daemon=True).start()
-    
-    for _ in range(8):
-        Thread(target=worker, daemon=True).start()
-    
-    while True:
-        try:
-            # AGRESİF POLLING: Bağlantıyı daha sık tazeler
-            bot.polling(none_stop=True, interval=0, timeout=20)
-        except Exception as e:
-            logging.error(f"Bağlantı Hatası: {e}")
-            time.sleep(5)
-        
+    asyncio.run(main())
+            
