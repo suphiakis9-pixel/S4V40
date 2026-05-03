@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %
 
 # --- KONFİGÜRASYON ---
 API_TOKEN = "8724856310:AAEwgs3I7jXrKEJoiby9YrqnRKQ4pYBwXEE"
-PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
+PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9"
 bot = AsyncTeleBot(API_TOKEN)
 
 # Flask (Render'ın portu açık tutması için)
