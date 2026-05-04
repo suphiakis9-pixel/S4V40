@@ -12,19 +12,20 @@ from telebot import types
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 
+# LOGLAMA
 logging.basicConfig(level=logging.ERROR)
 
-# SİGORTA: Render CPU koruması
+# SİGORTA: Render CPU koruması için max 4 işçi
 executor = ThreadPoolExecutor(max_workers=4)
 
 # --- KONFİGÜRASYON ---
 API_TOKEN = "8637392837:AAHnXyyKcSfe8Mic4kePRuQz80iMiruRcBI"
-PIXELDRAIN_API_KEY = "fe4b7a21-98cf-4cba-97a4-9f8661a3ac5c" # YENİ KEY GÜNCELLENDİ
+PIXELDRAIN_API_KEY = "fe4b7a21-98cf-4cba-97a4-9f8661a3ac5c" # Yeni Key
 bot = AsyncTeleBot(API_TOKEN)
 
 app = Flask('')
 @app.route('/')
-def home(): return "SİSTEM GÜNCEL KEY İLE AKTİF", 200
+def home(): return "SİSTEM GÜNCEL VE AKTİF", 200
 
 # ======================================================
 # 🧠 v32 ANALİZ MOTORU - (KESİNLİKLE DOKUNULMADI)
@@ -89,7 +90,7 @@ def process_pdf_blocking(file_bytes):
 async def multi_upload(file_bytes, ext):
     filename = f"dec_{int(time.time())}{ext}"
     async with aiohttp.ClientSession() as session:
-        # Pixeldrain (8 saniye bekleme)
+        # HAT 1: Pixeldrain
         try:
             data = aiohttp.FormData()
             data.add_field('file', file_bytes, filename=filename)
@@ -99,7 +100,7 @@ async def multi_upload(file_bytes, ext):
                     res = await r.json()
                     return f"https://pixeldrain.com/api/file/{res.get('id')}"
         except: pass
-        # Catbox Yedek
+        # HAT 2: Catbox (Pixeldrain başarısız olursa)
         try:
             cat_data = aiohttp.FormData()
             cat_data.add_field('reqtype', 'fileupload')
@@ -123,6 +124,7 @@ async def handle_files(message):
         link = await multi_upload(raw, ".pdf" if is_pdf else ".jpg")
         
         if is_pdf:
+            # PDF ANALİZİ - (Donma korumalı executor ile)
             g, a, t = await asyncio.get_event_loop().run_in_executor(executor, process_pdf_blocking, raw)
             markup = types.InlineKeyboardMarkup()
             if link: markup.add(types.InlineKeyboardButton("👁‍🗨 Görüntüle", url=link))
@@ -130,7 +132,7 @@ async def handle_files(message):
                    f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata'}`")
             await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
         else:
-            # Görsel için sadece temiz çıktı
+            # GÖRSEL ÇIKTISI - (İstediğin net formatta)
             msg = (f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Hata'}`")
             await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown")
     except:
@@ -147,10 +149,11 @@ async def main():
     Thread(target=start_flask, daemon=True).start()
     while True:
         try:
+            # Geçmiş mesajları kaçırmamak için skip_pending=False
             await bot.infinity_polling(timeout=40, request_timeout=40, skip_pending=False)
         except:
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
-                    
+            
