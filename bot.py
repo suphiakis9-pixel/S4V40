@@ -12,23 +12,23 @@ from telebot import types
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 
-# LOGLAMA: Sadece kritik hataları göster
+# LOGLAMA
 logging.basicConfig(level=logging.ERROR)
 
-# SİGORTA: Render CPU'sunu korumak için aynı anda max 4 analiz
+# SİGORTA: Max 4 ağır işlem
 executor = ThreadPoolExecutor(max_workers=4)
 
 # --- KONFİGÜRASYON ---
-API_TOKEN = "8637392837:AAHnXyyKcSfe8Mic4kePRuQz80iMiruRcBI" # Güncel Token
-PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9" # Kurtarılan Key
+API_TOKEN = "8637392837:AAHnXyyKcSfe8Mic4kePRuQz80iMiruRcBI" #
+PIXELDRAIN_API_KEY = "3be0c64a-e583-4296-990a-a0d0c6e2a6c9"
 bot = AsyncTeleBot(API_TOKEN)
 
 app = Flask('')
 @app.route('/')
-def home(): return "SİSTEM ÇİFT HATLI VE AKTİF", 200
+def home(): return "SİSTEM GÖRSEL AYRIMLI VE AKTİF", 200
 
 # ======================================================
-# 🧠 v32 ANALİZ MOTORU - (TUTAR VE İSİM DOKUNULMADI)
+# 🧠 v32 ANALİZ MOTORU - (DEĞİŞTİRİLMEDİ)
 # ======================================================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -62,7 +62,6 @@ def tutar_bul_final(full_text):
             if val and 5 < val < 10000000:
                 return "{:,.2f}".format(val).replace(',', 'X').replace('.', ',').replace('X', '.') + " TRY"
     return "Bulunamadı"
-# ======================================================
 
 def process_pdf_blocking(file_bytes):
     try:
@@ -73,7 +72,7 @@ def process_pdf_blocking(file_bytes):
         for i, l in enumerate(lns):
             l_up = l.upper()
             if "ADI SOYADI" in l_up and i < 10:
-                res = ismi_temizle(l_up)
+                res = ismi_temizle(l_up); 
                 if res: g = res
             if "GÖNDEREN:" in l_up:
                 res = ismi_temizle(l_up.split("GÖNDEREN:")[1].split("AÇIKLAMA:")[0].strip())
@@ -101,8 +100,7 @@ async def multi_upload(file_bytes, ext):
                     res = await r.json()
                     return f"https://pixeldrain.com/api/file/{res.get('id')}"
         except: pass
-
-        # HAT 2: Catbox (Pixeldrain patlarsa devreye girer)
+        # HAT 2: Catbox
         try:
             cat_data = aiohttp.FormData()
             cat_data.add_field('reqtype', 'fileupload')
@@ -123,22 +121,22 @@ async def handle_files(message):
         
         file_info = await bot.get_file(file_id)
         raw = await bot.download_file(file_info.file_path)
-
-        if is_pdf:
-            # SİGORTA: Max 4 işlemi executor ile yapıyoruz
-            g, a, t = await asyncio.get_event_loop().run_in_executor(executor, process_pdf_blocking, raw)
-        else:
-            g, a, t = "Görsel", "Görsel", "Yok"
-
-        # Çift hatlı yükleme
+        
         link = await multi_upload(raw, ".pdf" if is_pdf else ".jpg")
         
-        markup = types.InlineKeyboardMarkup()
-        if link: markup.add(types.InlineKeyboardButton("👁‍🗨 Görüntüle", url=link))
-        
-        msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n"
-               f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata: Sunucular Yanıt Vermiyor'}`")
-        await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
+        if is_pdf:
+            # PDF ANALİZİ VE DETAYLI MESAJ
+            g, a, t = await asyncio.get_event_loop().run_in_executor(executor, process_pdf_blocking, raw)
+            markup = types.InlineKeyboardMarkup()
+            if link: markup.add(types.InlineKeyboardButton("👁‍🗨 Görüntüle", url=link))
+            msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata'}`")
+            await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
+        else:
+            # GÖRSEL İÇİN SADECE LİNK MESAJI
+            msg = (f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Hata'}`")
+            await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown")
+            
     except:
         try: await bot.delete_message(message.chat.id, waiting.message_id)
         except: pass
@@ -151,14 +149,12 @@ def start_flask():
 
 async def main():
     Thread(target=start_flask, daemon=True).start()
-    print("Bot yeni token ve garantili yedek hat ile hazır!")
     while True:
         try:
-            # 'skip_pending' False ile geçmiş mesajları da toplar
             await bot.infinity_polling(timeout=40, request_timeout=40, skip_pending=False)
         except:
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
+                
