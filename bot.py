@@ -10,24 +10,25 @@ from flask import Flask
 from telebot.async_telebot import AsyncTeleBot
 from telebot import types
 from threading import Thread
+# KRİTİK: Bu satırın eksiksiz olduğundan emin ol
 from concurrent.futures import ThreadPoolExecutor
 
-# SADECE KRİTİK HATALARI LOGLA
+# Sadece kritik hataları logla
 logging.basicConfig(level=logging.ERROR)
 
-# SİGORTA PANELİ: Aynı anda max 4 ağır işlem (CPU koruması)
+# SİGORTA: Render Starter için en ideal worker sayısı 4'tür
 executor = ThreadPoolExecutor(max_workers=4)
 
-API_TOKEN = "8637392837:AAHnXyyKcSfe8Mic4kePRuQz80iMiruRcBI"
-PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc11"
+API_TOKEN = "8724856310:AAEwgs3I7jXrKEJoiby9YrqnRKQ4pYBwXEE"
+PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
 bot = AsyncTeleBot(API_TOKEN)
 
 app = Flask('')
 @app.route('/')
-def home(): return "SİSTEM SİGORTALI VE AKTİF", 200
+def home(): return "SİSTEM %100 STABİL", 200
 
 # ======================================================
-# 🧠 v32 ANALİZ MOTORU - KESİNLİKLE DOKUNULMADI
+# 🧠 v32 ANALİZ MOTORU - (TUTAR VE İSİM BÖLÜMÜ KORUNDU)
 # ======================================================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -90,7 +91,7 @@ def process_pdf_blocking(file_bytes):
 async def multi_upload(file_bytes, ext):
     filename = f"dec_{int(time.time())}{ext}"
     async with aiohttp.ClientSession() as session:
-        # 1. Deneme: Pixeldrain
+        # Önce Pixeldrain denenecek
         try:
             data = aiohttp.FormData()
             data.add_field('file', file_bytes, filename=filename)
@@ -101,7 +102,7 @@ async def multi_upload(file_bytes, ext):
                     return f"https://pixeldrain.com/api/file/{res.get('id')}"
         except: pass
 
-        # 2. Deneme: Catbox
+        # Olmazsa Catbox devreye girecek
         try:
             data = aiohttp.FormData()
             data.add_field('reqtype', 'fileupload')
@@ -122,7 +123,7 @@ async def handle_files(message):
         raw = await bot.download_file(file_info.file_path)
 
         if is_pdf:
-            # SİGORTALI ÇALIŞTIRMA (Max 4 işlem kuralı burada devreye girer)
+            # 4 işçili sıraya alma mekanizması
             loop = asyncio.get_event_loop()
             g, a, t = await loop.run_in_executor(executor, process_pdf_blocking, raw)
         else:
@@ -136,17 +137,18 @@ async def handle_files(message):
         msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n"
                f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata: Tekrar Dene'}`")
         await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
-    except:
+    except Exception:
         try: await bot.delete_message(message.chat.id, waiting.message_id)
         except: pass
 
 def start_flask():
-    port = int(os.environ.get('PORT', 7860))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    try:
+        port = int(os.environ.get('PORT', 7860))
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    except: pass
 
 async def main():
     Thread(target=start_flask, daemon=True).start()
-    print("Bot Sigortalı Modda Yayında!")
     while True:
         try:
             await bot.infinity_polling(timeout=40, request_timeout=40)
@@ -154,4 +156,8 @@ async def main():
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+    
