@@ -26,8 +26,8 @@ def keep_alive():
 
 # 🔑 API AYARLARI
 # Not: Güvenliğin için bu tokenleri Render panelinde 'Environment Variables' kısmına taşımanı öneririm.
-API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14got"
-PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
+API_TOKEN = "8637392837:AAHnXyyKcSfe8Mic4kePRuQz80iMiruRcBI"
+PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1got"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=25)
 task_queue = queue.Queue()
