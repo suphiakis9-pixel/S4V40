@@ -12,23 +12,22 @@ from telebot import types
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 
-# LOGLAMA
 logging.basicConfig(level=logging.ERROR)
 
-# SİGORTA: Render CPU koruması için max 4 işçi
+# SİGORTA: Donmayı engelleyen işlem yöneticisi
 executor = ThreadPoolExecutor(max_workers=4)
 
 # --- KONFİGÜRASYON ---
-API_TOKEN = "8637392837:AAHnXyyKcSfe8Mic4kePRuQz80iMiruRcBI" #
-PIXELDRAIN_API_KEY = "fe4b7a21-98cf-4cba-97a4-9f8661a3ac5c" # Yeni Key
+API_TOKEN = "8707544469:AAHSC-NrPwLDvbXog7rSiFAJvEL_xlbEJ14"
+PIXELDRAIN_API_KEY = "fe4b7a21-98cf-4cba-97a4-9f8661a3ac5c" # Güncel Key
 bot = AsyncTeleBot(API_TOKEN)
 
 app = Flask('')
 @app.route('/')
-def home(): return "SİSTEM ZİRAAT GÜNCELLEMESİ İLE AKTİF", 200
+def home(): return "SİSTEM ANALİZ MOTORU BİREBİR KORUNARAK AKTİF", 200
 
 # ======================================================
-# 🧠 v32 ANALİZ MOTORU - (ZİRAAT İÇİN GÜÇLENDİRİLDİ)
+# 🧠 v32 ANALİZ MOTORU (BİREBİR KOPYALANDI)
 # ======================================================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -66,22 +65,37 @@ def tutar_bul_final(full_text):
 def process_pdf_blocking(file_bytes):
     try:
         pdf = pypdf.PdfReader(io.BytesIO(file_bytes))
-        txt = "".join([(page.extract_text() or "") + "\n" for page in pdf.pages])
+        txt = ""
+        for page in pdf.pages: txt += (page.extract_text() or "") + "\n"
         lns = [l.strip() for l in txt.split('\n') if l.strip()]
         g, a = "Bilinmiyor", "Bilinmiyor"
         
         for i, l in enumerate(lns):
             l_up = l.upper()
             
-            # ZİRAAT ÖZEL: "GÖNDEREN" satırı tespiti
+            # --- GÖNDEREN ANALİZİ (v32 Mantığı) ---
+            if "ADI SOYADI" in l_up and i < 10:
+                res = ismi_temizle(l_up)
+                if res: g = res
+            
+            # Ziraat tespiti için eklenen tek parça
             if "GÖNDEREN" in l_up:
                 parts = re.split(r'GÖNDEREN\s*[:]*', l_up)
-                if len(parts) > 1:
-                    res = ismi_temizle(parts[1].split("AÇIKLAMA:")[0].strip())
-                    if res: g = res
+                target = parts[1] if len(parts) > 1 else l_up
+                res = ismi_temizle(target.split("AÇIKLAMA:")[0].strip())
+                if res: g = res
             
+            if "SAYIN" in l_up and g == "Bilinmiyor":
+                comb = l_up.replace("SAYIN", "").strip()
+                if i+1 < len(lns): comb += " " + lns[i+1].upper()
+                res = ismi_temizle(comb)
+                if res: g = res
+
+            # --- ALICI ANALİZİ (v32 Mantığı) ---
             if any(k in l_up for k in ["ALICI ADI SOYADI", "ALICI HESAP", "ALICI:", "ALICI ÜNVANI"]):
                 res = ismi_temizle(l_up)
+                if "ALICI ÜNVANI:" in l_up and (not res or len(res.split()) < 2):
+                    res = ismi_temizle(l_up.split("ALICI ÜNVANI:")[1].split("ALICI IBAN")[0].strip())
                 if (not res or len(res.split()) < 2) and i+1 < len(lns): res = ismi_temizle(lns[i+1])
                 if res: a = res
             
@@ -92,6 +106,9 @@ def process_pdf_blocking(file_bytes):
         return g, a, tutar_bul_final(txt)
     except: return "Hata", "Hata", "Bulunamadı"
 
+# ======================================================
+# ☁️ BULUT VE BOT YÖNETİMİ
+# ======================================================
 async def multi_upload(file_bytes, ext):
     filename = f"dec_{int(time.time())}{ext}"
     async with aiohttp.ClientSession() as session:
@@ -127,7 +144,6 @@ async def handle_files(message):
         link = await multi_upload(raw, ".pdf" if is_pdf else ".jpg")
         
         if is_pdf:
-            # PDF ANALİZİ - (Donma korumalı executor)
             g, a, t = await asyncio.get_event_loop().run_in_executor(executor, process_pdf_blocking, raw)
             markup = types.InlineKeyboardMarkup()
             if link: markup.add(types.InlineKeyboardButton("👁‍🗨 Görüntüle", url=link))
@@ -135,7 +151,6 @@ async def handle_files(message):
                    f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** `{link if link else 'Hata'}`")
             await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown", reply_markup=markup)
         else:
-            # GÖRSEL ÇIKTISI - (İstediğin net format)
             msg = (f"📸 **Görsel Linki ✅**\n\n📋 `{link if link else 'Hata'}`")
             await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown")
     except:
@@ -152,10 +167,10 @@ async def main():
     Thread(target=start_flask, daemon=True).start()
     while True:
         try:
-            await bot.infinity_polling(timeout=40, request_timeout=40, skip_pending=False)
+            await bot.infinity_polling(timeout=40, request_timeout=40, skip_pending=True)
         except:
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
+                                    
