@@ -19,7 +19,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 # --- KONFİGÜRASYON ---
 API_TOKEN = "8637392837:AAHnXyyKcSfe8Mic4kePRuQz80iMiruRcBI"
-PIXELDRAIN_API_KEY = "fe4b7a21-98cf-4cba-97a4-9f8661a3ac5c" # Güncel Key
+PIXELDRAIN_API_KEY = "fe4b7a21-98cf-4cba-97a4-9f8661a3ac5cc" # Güncel Key
 bot = AsyncTeleBot(API_TOKEN)
 
 app = Flask('')
