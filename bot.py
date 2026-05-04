@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.ERROR)
 executor = ThreadPoolExecutor(max_workers=4)
 
 API_TOKEN = "8724856310:AAEwgs3I7jXrKEJoiby9YrqnRKQ4pYBwXEE"
-PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
+PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc11"
 bot = AsyncTeleBot(API_TOKEN)
 
 app = Flask('')
