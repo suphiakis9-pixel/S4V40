@@ -26,7 +26,7 @@ def keep_alive():
 
 # 🔑 GÜNCEL API AYARLARI
 API_TOKEN = "8637392837:AAHnXyyKcSfe8Mic4kePRuQz80iMiruRcBI"
-PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc12"
+PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=25)
 task_queue = queue.Queue()
