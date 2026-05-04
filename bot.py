@@ -2,7 +2,7 @@ import asyncio
 import io
 import re
 import time
-import os
+import o
 import logging
 import aiohttp
 import pypdf
