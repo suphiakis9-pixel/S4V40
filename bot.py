@@ -4,7 +4,7 @@ from threading import Thread
 from telebot import types
 
 # ==============================
-# ⚙️ SUNUCU VE AYARLAR
+# ⚙️ SUNUCU VE AYARLAR (KORUNDU)
 # ==============================
 app = Flask('')
 @app.route('/')
@@ -24,16 +24,15 @@ def keep_alive():
         except: pass
         time.sleep(15)
 
-# 🔑 API AYARLARI
-# Not: Güvenliğin için bu tokenleri Render panelinde 'Environment Variables' kısmına taşımanı öneririm.
+# 🔑 GÜNCEL API AYARLARI
 API_TOKEN = "8637392837:AAHnXyyKcSfe8Mic4kePRuQz80iMiruRcBI"
-PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc1got"
+PIXELDRAIN_API_KEY = "df660474-7351-4307-a661-a5657f2ebfc12"
 
 bot = telebot.TeleBot(API_TOKEN, threaded=True, num_threads=25)
 task_queue = queue.Queue()
 
 # ==============================
-# 🧠 v32 ANALİZ MOTORU (KORUNDU)
+# 🧠 v32 ANALİZ MOTORU (DOKUNULMADI)
 # ==============================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -101,13 +100,14 @@ def analiz_et_v32(file_bytes):
     except: return "Hata","Hata","Bulunamadı"
 
 # ==============================
-# ☁️ BULUT YÜKLEME (GÜÇLENDİRİLDİ)
+# ☁️ BULUT YÜKLEME (DÜZELTİLDİ)
 # ==============================
 def dosya_yukle_yedekli(raw_file, uzanti):
     fn = f"is_f_{int(time.time())}{uzanti}"
     
     # --- 1. DURAK: PIXELDRAIN ---
     try:
+        # io.BytesIO(raw_file) ile her seferinde veriyi sıfırdan okutuyoruz
         r = requests.post(
             "https://pixeldrain.com/api/file", 
             auth=("", PIXELDRAIN_API_KEY), 
@@ -120,8 +120,9 @@ def dosya_yukle_yedekli(raw_file, uzanti):
     except:
         pass
 
-    # --- 2. DURAK: CATBOX (YEDEK) ---
+    # --- 2. DURAK: CATBOX (Yedek) ---
     try:
+        # Pixeldrain patlarsa, taze veriyle burası devreye girer
         r_c = requests.post(
             "https://catbox.moe/user/api.php", 
             data={"reqtype": "fileupload"}, 
@@ -136,7 +137,7 @@ def dosya_yukle_yedekli(raw_file, uzanti):
     return None
 
 # ==============================
-# ⚙️ İŞLEM YÖNETİCİSİ
+# ⚙️ İŞLEM YÖNETİCİSİ (KORUNDU)
 # ==============================
 def islem_yap(message):
     waiting = None
@@ -148,10 +149,7 @@ def islem_yap(message):
         file_info = bot.get_file(file_id)
         raw = bot.download_file(file_info.file_path)
         
-        # Analiz
         g, a, t = ("Görsel", "Görsel", "Yok") if not is_pdf else analiz_et_v32(raw)
-        
-        # Yükleme
         link = dosya_yukle_yedekli(raw, ".pdf" if is_pdf else ".jpg")
 
         markup = types.InlineKeyboardMarkup()
@@ -184,7 +182,7 @@ def handle(m):
     task_queue.put(m)
 
 # ==============================
-# 🚀 BAŞLATICI
+# 🚀 BAŞLATICI (KORUNDU)
 # ==============================
 if __name__ == "__main__":
     try: bot.delete_webhook()
@@ -198,13 +196,12 @@ if __name__ == "__main__":
     
     while True:
         try:
-            # skip_pending=True: Geçmiş (bekleyen) mesajlar açılışta işlenmez.
             bot.infinity_polling(
                 timeout=20, 
                 long_polling_timeout=15, 
                 logger_level=1, 
-                skip_pending=True 
+                skip_pending=True # Eski mesajları atlama koruması
             )
         except Exception as e:
             time.sleep(5)
-            
+    
