@@ -18,11 +18,11 @@ logging.basicConfig(level=logging.ERROR)
 
 # SİGORTA
 executor = ThreadPoolExecutor(max_workers=4)
-upload_semaphore = asyncio.Semaphore(3)
+upload_semaphore = asyncio.Semaphore(3) # Aynı anda max 3 yükleme
 
 # --- KONFİGÜRASYON ---
 API_TOKEN = "8637392837:AAGwMQdmPsB7hwu4ayk-ILdy1hYc_WvCf7Q"
-IMGBB_API_KEY = "810e9541310aca8c085c9cd259179384" # Yeni anahtarın buraya işlendi
+IMGBB_API_KEY = "810e9541310aca8c085c9cd259179384"
 PIXELDRAIN_API_KEY = "5f506736-f934-4871-99ce-b145dc96279d"
 bot = AsyncTeleBot(API_TOKEN)
 
@@ -31,7 +31,7 @@ app = Flask('')
 def home(): return f"SİSTEM AKTİF - UPLOAD MOTORU GÜÇLENDİRİLDİ - {time.strftime('%H:%M:%S')}", 200
 
 # ======================================================
-# 🧠 v32 ANALİZ MOTORU (BİREBİR KORUNDU)
+# 🧠 v32 ANALİZ MOTORU (DOKUNULMADI - BİREBİR KORUNDU)
 # ======================================================
 CLEAN_RE = re.compile(r'[^A-ZÇĞİÖŞÜ ]')
 YASAKLI = {"ALICI","HESAP","GÖNDEREN","SAYIN","HESABI","ÜNVANI","UNVANI","LEHTAR","MÜŞTERİ","İSİM","AD","SOYAD","TR","AÇIKLAMA","BİREYSEL","ÖDEME","MASRAF","KOMİSYON","ÜCRET","VERGİ","DAİRESİ","NO","TCKN","VKN","ADRESİ","ŞUBE","VADESİZ","TUTARI","IBAN","KART","KARTI","KARTINIZDAN","PARA","CİNSİ","FİŞ","BANK","BANKASI","A.Ş","ELEKTRONİK","HİZMETLERİ","AŞ","MÜDÜRLÜĞÜ","FAİZ","VERGİSİ","ALACAKLI","ADİ","SOYADI","BORÇLU","İŞLEM","YALNIZ","TUTAR","EFT","HAVALE","MERKEZİ","ŞUBESİ","ADI","AŞAĞIDAKİ","TC","KİMLİK","NUMARASI","FAST","DEKONT"}
@@ -101,40 +101,58 @@ def process_pdf_blocking(file_bytes):
     except: return "Hata", "Hata", "Bulunamadı"
 
 # ======================================================
-# ☁️ ÖNCELİKLİ UPLOAD MOTORU
+# ☁️ OPTİMİZE EDİLMİŞ GLOBAL UPLOAD MOTORU
 # ======================================================
+_session = None
+
 async def get_session():
     global _session
     if _session is None or _session.closed:
         _session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=25))
     return _session
 
-_session = None
-
 async def multi_upload(file_bytes, ext):
     filename = f"dec_{int(time.time())}{ext}"
     session = await get_session()
     
-    async with upload_semaphore:
-        # 1. SEÇENEK: IMGBB (YENİ ANAHTAR İLE)
+    async with upload_semaphore: # Aynı anda çok fazla yüklemeyi engeller
+        # 1. Deneme Hattı: IMGBB (ÖNCELİKLİ)
         try:
             base64_data = base64.b64encode(file_bytes).decode('utf-8')
-            payload = {"key": IMGBB_API_KEY, "image": base64_data, "name": filename}
+            payload = {
+                "key": IMGBB_API_KEY,
+                "image": base64_data,
+                "name": filename
+            }
             async with session.post("https://api.imgbb.com/1/upload", data=payload) as r:
                 if r.status == 200:
                     res = await r.json()
                     if res.get("data", {}).get("url"): return res["data"]["url"]
-        except: pass
+        except:
+            pass
 
-        # 2. SEÇENEK: PIXELDRAIN (YEDEK)
+        # 2. Deneme Hattı: PIXELDRAIN (YEDEK)
+        for attempt in range(2): # 2 kez dene
+            try:
+                data = aiohttp.FormData()
+                data.add_field('file', file_bytes, filename=filename)
+                auth = aiohttp.BasicAuth("", PIXELDRAIN_API_KEY)
+                async with session.post("https://pixeldrain.com/api/file", data=data, auth=auth) as r:
+                    if r.status in [200, 201]:
+                        res = await r.json()
+                        if res.get('id'): return f"https://pixeldrain.com/u/{res.get('id')}"
+            except:
+                await asyncio.sleep(1)
+
+        # 3. Deneme Hattı: CATBOX
         try:
             data = aiohttp.FormData()
-            data.add_field('file', file_bytes, filename=filename)
-            auth = aiohttp.BasicAuth("", PIXELDRAIN_API_KEY)
-            async with session.post("https://pixeldrain.com/api/file", data=data, auth=auth) as r:
-                if r.status in [200, 201]:
-                    res = await r.json()
-                    if res.get('id'): return f"https://pixeldrain.com/u/{res.get('id')}"
+            data.add_field('reqtype', 'fileupload')
+            data.add_field('fileToUpload', file_bytes, filename=filename)
+            async with session.post("https://catbox.moe/user/api.php", data=data) as r:
+                if r.status == 200:
+                    link = await r.text()
+                    if "https" in link: return link.strip()
         except: pass
         
     return None
@@ -145,9 +163,11 @@ async def handle_files(message):
     try:
         is_pdf = message.content_type == 'document' and message.document.file_name.lower().endswith('.pdf')
         file_id = message.document.file_id if is_pdf else message.photo[-1].file_id
+        
         file_info = await bot.get_file(file_id)
         raw = await bot.download_file(file_info.file_path)
         
+        # Link alma (Akıllı motor)
         link = await multi_upload(raw, ".pdf" if is_pdf else ".jpg")
         link_str = f"`{link}`" if link else "_Yükleme zaman aşımına uğradı_"
         
@@ -155,6 +175,7 @@ async def handle_files(message):
             g, a, t = await asyncio.get_event_loop().run_in_executor(executor, process_pdf_blocking, raw)
             markup = types.InlineKeyboardMarkup()
             if link: markup.add(types.InlineKeyboardButton("👁‍🗨 Görüntüle", url=link))
+            
             msg = (f"🏦 **ONAY ✅**\n━━━━━━━━━━━━━━━━━━━━\n"
                    f"👤 **G:** `{g}`\n👤 **A:** `{a}`\n💰 **T:** `{t}`\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n📋 **Kopyala:** {link_str}")
@@ -162,14 +183,28 @@ async def handle_files(message):
         else:
             msg = f"📸 **Görsel Linki ✅**\n\n📋 {link_str}"
             await bot.edit_message_text(msg, message.chat.id, waiting.message_id, parse_mode="Markdown")
+            
     except Exception as e:
-        try: await bot.edit_message_text(f"❌ Hata: {str(e)[:20]}", message.chat.id, waiting.message_id)
+        try: await bot.edit_message_text(f"❌ Bağlantı hatası oluştu, lütfen tekrar deneyin.", message.chat.id, waiting.message_id)
         except: pass
 
+def start_flask():
+    try:
+        port = int(os.environ.get('PORT', 7860))
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    except: pass
+
 async def main():
-    Thread(target=lambda: app.run(host='0.0.0.0', port=7860, debug=False, use_reloader=False), daemon=True).start()
-    await bot.infinity_polling(skip_pending=True)
+    Thread(target=start_flask, daemon=True).start()
+    while True:
+        try:
+            await bot.infinity_polling(timeout=60, request_timeout=60, skip_pending=True)
+        except:
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    asyncio.run(main())
-                
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+    
