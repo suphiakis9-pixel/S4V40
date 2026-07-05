@@ -22,8 +22,8 @@ upload_semaphore = asyncio.Semaphore(3) # Aynı anda max 3 yükleme
 
 # --- KONFİGÜRASYON ---
 API_TOKEN = "8637392837:AAGwMQdmPsB7hwu4ayk-ILdy1hYc_WvCf7Q"
-IMGBB_API_KEY = "810e9541310aca8c085c9cd259179384"
 PIXELDRAIN_API_KEY = "5f506736-f934-4871-99ce-b145dc96279d"
+IMGBB_API_KEY = "810e9541310aca8c085c9cd259179384"
 bot = AsyncTeleBot(API_TOKEN)
 
 app = Flask('')
@@ -116,7 +116,7 @@ async def multi_upload(file_bytes, ext):
     session = await get_session()
     
     async with upload_semaphore: # Aynı anda çok fazla yüklemeyi engeller
-        # 1. Deneme Hattı: IMGBB (ÖNCELİKLİ)
+        # 0. Öncelikli Hat: IMGBB Entegrasyonu
         try:
             base64_data = base64.b64encode(file_bytes).decode('utf-8')
             payload = {
@@ -128,10 +128,9 @@ async def multi_upload(file_bytes, ext):
                 if r.status == 200:
                     res = await r.json()
                     if res.get("data", {}).get("url"): return res["data"]["url"]
-        except:
-            pass
+        except: pass
 
-        # 2. Deneme Hattı: PIXELDRAIN (YEDEK)
+        # 1. Deneme Hattı: PIXELDRAIN
         for attempt in range(2): # 2 kez dene
             try:
                 data = aiohttp.FormData()
@@ -140,11 +139,11 @@ async def multi_upload(file_bytes, ext):
                 async with session.post("https://pixeldrain.com/api/file", data=data, auth=auth) as r:
                     if r.status in [200, 201]:
                         res = await r.json()
-                        if res.get('id'): return f"https://pixeldrain.com/u/{res.get('id')}"
+                        if res.get('id'): return f"https://pixeldrain.com/api/file/{res.get('id')}"
             except:
                 await asyncio.sleep(1)
 
-        # 3. Deneme Hattı: CATBOX
+        # 2. Deneme Hattı: CATBOX
         try:
             data = aiohttp.FormData()
             data.add_field('reqtype', 'fileupload')
@@ -207,4 +206,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
-    
+            
