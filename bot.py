@@ -23,7 +23,7 @@ upload_semaphore = asyncio.Semaphore(3) # Aynı anda max 3 yükleme
 # --- KONFİGÜRASYON ---
 API_TOKEN = "8637392837:AAGwMQdmPsB7hwu4ayk-ILdy1hYc_WvCf7Q"
 PIXELDRAIN_API_KEY = "5f506736-f934-4871-99ce-b145dc96279d"
-IMGBB_API_KEY = "679973d7f4dd110dcb6c1a765426ed93"
+IMGBB_API_KEY = "8767761512f4e4d2ef54dfb109e0da80"
 bot = AsyncTeleBot(API_TOKEN)
 
 app = Flask('')
