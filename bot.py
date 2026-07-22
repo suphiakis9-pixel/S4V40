@@ -21,7 +21,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 upload_semaphore = asyncio.Semaphore(3) # Aynı anda max 3 yükleme
 
 # --- KONFİGÜRASYON ---
-API_TOKEN = "8637392837:AAGwMQdmPsB7hwu4ayk-ILdy1hYc_WvCf7Q"
+API_TOKEN = "8637392837:AAFCcX0Svk7ib31LVQ1WGe6ug6Yj6OI9CtI"
 PIXELDRAIN_API_KEY = "5f506736-f934-4871-99ce-b145dc96279d"
 IMGBB_API_KEY = "8767761512f4e4d2ef54dfb109e0da80"
 bot = AsyncTeleBot(API_TOKEN)
